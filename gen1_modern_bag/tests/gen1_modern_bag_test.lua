@@ -242,10 +242,18 @@ local ballsOpen = BagMenu.new(game, {})
 assert(ballsOpen.modernBag.pocket == 3, "Opening Pocket=BALLS was ignored")
 assert(ballsOpen.items[1].value == "POKE_BALL", "BALLS did not open to the correct rows")
 
+-- The pocket header names the open pocket between the Left/Right arrows, in a
+-- fixed 18-glyph field so the arrows stay in the same columns on every pocket.
+assert(ballsOpen.title == "<     BALLS      >",
+  "wrong pocket header: " .. tostring(ballsOpen.title))
+assert(#ballsOpen.title == 18, "pocket header must stay 18 glyphs wide")
+
 -- LAST USED remembers pocket changes.
 pressed.right = true
 ballsOpen:update(0)
 assert(ballsOpen.modernBag.pocket == 4, "right pocket switch failed")
+assert(ballsOpen.title == "<     TM HM      >",
+  "pocket header did not follow the pocket switch: " .. tostring(ballsOpen.title))
 assert(saved.last_pocket == "machines", "last-used pocket was not persisted")
 optionValues.opening_pocket = "last"
 local lastOpen = BagMenu.new(game, {})

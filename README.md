@@ -26,14 +26,17 @@ retained verbatim in [`LICENSE`](LICENSE), with the derivative grant appended
 below it.
 
 Essentially all of the functionality described here is upstream's work. The
-substantive change in Gen1ModernBag is a corrected machine-label width — one
-constant, described under [The change from upstream](#the-change-from-upstream).
+changes in Gen1ModernBag are a corrected machine-label width — one constant —
+and the arrowed pocket header, both described under
+[The changes from upstream](#the-changes-from-upstream).
 
 This is an independent, parallel project. It is not endorsed by or affiliated
 with FAFF0x or the gen1recomp project, and it is not a replacement, successor,
 or official continuation of Modern Bag.
 
-## The change from upstream
+## The changes from upstream
+
+### Machine-label width
 
 In upstream 1.6.0, long TM/HM labels in the TM/HM pocket render past the right
 edge of the item window. The truncation helper was budgeted for 15 characters,
@@ -69,9 +72,23 @@ The quantity column is not affected. Counts are drawn right-aligned on a second
 line below the name, which is vanilla Gen 1 behaviour; it only appeared to
 overlap because overflowing names were colliding with it.
 
+### Pocket header
+
+Upstream titles the Bag `MEDICINE 2/7`: the pocket name and its position in the
+ring. Gen1ModernBag heads it `<    MEDICINE    >` instead — the name centered
+between the Left/Right keys that change pocket, in a fixed 18-glyph field, so
+the arrows sit in the same columns whichever pocket is open. 18 glyphs is the
+drawable run of the title row: it starts at x = 8 and the item window's inner
+right edge is x = 152, and Gen 1 glyphs are 8px wide.
+
+The width is `HEADER_WIDTH` at the top of
+[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua); lower it if a display
+clips the arrows. Labels longer than the field are truncated to fit, so the
+arrows are never pushed off-screen.
+
 ## Installation
 
-1. Download `gen1_modern_bag_v1.0.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.1.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -99,6 +116,10 @@ The manifest declares `"conflicts": ["modern_bag"]`. Both mods decorate the same
 - **BATTLE** — X items, Dire Hit, Guard Spec and Poké Doll.
 - **KEY ITEMS** — non-tossable and key items.
 - **OTHER** — stones, Repels, Escape Rope, fossils and everything not covered above.
+
+Each pocket is headed by its own name between the arrows that change pocket —
+`<     BALLS      >` — so the page you are on and the direction keys that move
+off it read as one line. Pockets wrap around, so both arrows always apply.
 
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
@@ -209,13 +230,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.0.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.1.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.0.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.1.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
