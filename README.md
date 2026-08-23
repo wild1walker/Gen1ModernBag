@@ -1,4 +1,10 @@
-# Gen1ModernBag
+<p align="center">
+  <img src="docs/banner.png" alt="Gen1ModernBag" width="560">
+</p>
+
+<p align="center">
+  <b>Seven pockets, sorted, searchable, and never full</b>
+</p>
 
 Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets,
 sorts items automatically, and adds Favorites, persistent pinned items, quick
