@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.1
+
+- Fixed the pocket header, which 1.1.0 never drew. The header was written to
+  the Bag list's `title`, but the engine only draws a list title on its plain
+  full-screen path; the Bag is an item-box list, and that path paints the box,
+  its rows and the cursor and no title at all. The pocket name is now drawn by
+  the mod, on the empty row at the top of the item box.
+- Replaced the `<` and `>` around the name with the engine's own arrow glyph,
+  the Left one mirrored. Angle brackets are not characters in Gen 1 text --
+  they delimit control tokens like `<PK>` and `<PLAYER>` -- so they could not
+  have been drawn even on a screen that draws a title.
+
+---
+
 ## 1.1.0
 
 - Added a pocket header: the open pocket's name centered between `<` and `>`,

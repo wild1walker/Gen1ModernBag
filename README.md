@@ -75,20 +75,40 @@ overlap because overflowing names were colliding with it.
 ### Pocket header
 
 Upstream titles the Bag `MEDICINE 2/7`: the pocket name and its position in the
-ring. Gen1ModernBag heads it `<    MEDICINE    >` instead — the name centered
-between the Left/Right keys that change pocket, in a fixed 18-glyph field, so
-the arrows sit in the same columns whichever pocket is open. 18 glyphs is the
-drawable run of the title row: it starts at x = 8 and the item window's inner
-right edge is x = 152, and Gen 1 glyphs are 8px wide.
+ring. Gen1ModernBag heads it `◀ MEDICINE ▶` instead — the name between the
+Left/Right keys that change pocket.
 
-The width is `HEADER_WIDTH` at the top of
-[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua); lower it if a display
-clips the arrows. Labels longer than the field are truncated to fit, so the
-arrows are never pushed off-screen.
+The header is drawn by the mod rather than set as the list's title, because a
+title set on the Bag is never drawn. `BagMenu` builds its `ListMenu` with
+`itemBox = true`, and that branch of `ListMenu:draw` paints the LIST_MENU_BOX,
+its rows, the quantities and the cursor and then returns; the
+`Font.draw(Strings(self.title), 8, 4)` line lives in the plain full-screen
+branch below it, which the Bag never reaches. Setting `title` is still worth
+doing — Gen1 Modern UI and this mod's compatibility contract read it — but it
+does not put anything on screen. Gen1ModernBag 1.1.0 shipped a header that way
+and it was invisible; 1.1.1 draws it.
+
+It goes on the empty row at the top of the item window. `LIST_MENU_BOX` is
+tiles 4,2–19,12, so the box interior starts at y = 24 and the first item name
+is drawn at y = 32: the row at y = 24 is unused and sits on the box's own white
+fill. The interior spans x = 40 to x = 152 — fourteen 8px columns — and the
+arrows take the first and the last, leaving twelve for the name. The longest
+pocket labels (`FAVORITES`, `KEY ITEMS`) are nine.
+
+The arrows are the engine's cursor glyph, `Theme.cursor`, and the Left one is
+that glyph mirrored about its own cell. Gen 1 has no left-pointing arrow —
+`charmap.asm` carries `▷ $EC`, `▲ $ED` and `▼ $EE` and stops there — and it has
+no `<` or `>` either: angle brackets delimit control tokens like `<PK>`,
+`<PLAYER>` and `<LINE>`, so `<  MEDICINE  >` was never text the font could
+draw.
+
+The geometry is the `HEADER_*` constants at the top of
+[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua). Labels wider than the
+field are trimmed to fit, so the arrows are never pushed out of the box.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.1.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.1.1.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -118,8 +138,9 @@ The manifest declares `"conflicts": ["modern_bag"]`. Both mods decorate the same
 - **OTHER** — stones, Repels, Escape Rope, fossils and everything not covered above.
 
 Each pocket is headed by its own name between the arrows that change pocket —
-`<     BALLS      >` — so the page you are on and the direction keys that move
-off it read as one line. Pockets wrap around, so both arrows always apply.
+`◀ BALLS ▶`, on the top row of the item window — so the page you are on and the
+direction keys that move off it read as one line. Pockets wrap around, so both
+arrows always apply.
 
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
@@ -230,13 +251,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.1.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.1.1 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.1.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.1.1.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
