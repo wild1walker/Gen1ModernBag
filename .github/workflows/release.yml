@@ -129,7 +129,11 @@ jobs:
             gh release upload "$tag" "${{ steps.zip.outputs.name }}" --clobber
             echo "updated the asset on $tag"
           else
+            # Anchored to the commit being released. Without --target, gh
+            # anchors a release to whatever the default branch is at the time,
+            # which is not necessarily the branch the build came from.
             gh release create "$tag" "${{ steps.zip.outputs.name }}" \
+              --target "${{ github.sha }}" \
               --title "Gen1ModernBag ${{ steps.v.outputs.version }}" \
               --notes-file RELEASE_NOTES.md
             echo "published $tag"
