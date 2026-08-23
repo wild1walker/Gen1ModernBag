@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+- Added a pocket header: the open pocket's name centered between `<` and `>`,
+  the Left/Right keys that change pocket, in a fixed 18-glyph field so the
+  arrows stay in the same columns on every pocket.
+- Replaced the old `MEDICINE 2/7` title with that header. The pocket position
+  is no longer spelled out; the arrows show that pockets continue in both
+  directions, and they wrap around as before.
+- No change to pocket contents, sorting, Favorites, pins, search or TM/HM
+  tools.
+
+---
+
 ## 1.0.0
 
 First release of Gen1ModernBag, derived from FAFF0x's Modern Bag 1.6.0.

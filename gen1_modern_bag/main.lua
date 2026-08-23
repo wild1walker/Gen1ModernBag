@@ -65,6 +65,22 @@ local function scrollConfig(mod)
   return SCROLL_SPEEDS[speed] or SCROLL_SPEEDS.fast
 end
 
+-- Pocket header: the pocket name centered between the Left/Right arrows that
+-- switch pockets, e.g. "<     BALLS      >". Gen 1 glyphs are 8px wide and the
+-- title row runs from x = 8 to the item window's inner right edge at x = 152,
+-- so 18 glyphs are drawable; the arrows take the first and last of them.
+local HEADER_WIDTH = 18
+
+local function pocketHeader(index)
+  local pocket = POCKETS[index]
+  local label = pocket and pocket.label or ""
+  local inner = HEADER_WIDTH - 2
+  if #label > inner then label = label:sub(1, inner) end
+  local pad = inner - #label
+  local left = math.floor(pad / 2)
+  return "<" .. (" "):rep(left) .. label .. (" "):rep(pad - left) .. ">"
+end
+
 local function rememberPocket(state)
   if not state or not state.mod or not state.mod.save then return end
   local pocket = POCKETS[state.pocket]
@@ -493,7 +509,7 @@ local function refreshPocket(list, preserveId)
   local pocket = POCKETS[state.pocket]
   local rows = itemRows(list.game, pocket.id, state)
   list.items = rows
-  list.title = ("%s %d/%d"):format(pocket.label, state.pocket, #POCKETS)
+  list.title = pocketHeader(state.pocket)
   if pocket.id == "machines" then
     local sortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
     state.startActionLabel = "FILTER"
