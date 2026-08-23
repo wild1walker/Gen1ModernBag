@@ -205,6 +205,11 @@ To build a release archive matching the shape the in-game importer expects
 
     zip -r gen1_modern_bag_v1.0.0.zip gen1_modern_bag -x '*.zip'
 
+Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
+pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
+with `manifest.json`, verifies the archive by extracting it and re-running the
+tests from the extracted copy, and attaches it to the release.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE). The upstream Modern Bag notice is retained

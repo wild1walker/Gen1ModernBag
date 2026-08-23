@@ -1,0 +1,136 @@
+name: Release
+
+# Publishes a release the in-game importer and a mod index can both read: the
+# tag, and a zip with gen1_modern_bag/ at its root carrying manifest.json and
+# LICENSE. Run it from the Actions tab, or push a v* tag.
+#
+# Dispatching tags the commit it runs on. That push carries the default
+# GITHUB_TOKEN, which by design does not start another workflow run, so the
+# tag trigger below cannot double-publish what a dispatch already built.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the v. Must match gen1_modern_bag/manifest.json.'
+        required: true
+        default: '1.0.0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work out the version, and refuse to disagree with the manifest
+        id: v
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          manifest=$(python3 -c "import json; print(json.load(open('gen1_modern_bag/manifest.json'))['version'])")
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::releasing $version, but gen1_modern_bag/manifest.json says $manifest"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "releasing $version"
+
+      - name: Install Lua
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+
+      - name: Check it parses and its tests pass
+        working-directory: gen1_modern_bag
+        run: |
+          set -euo pipefail
+          luac5.4 -p main.lua
+          for t in tests/*.lua; do lua5.4 "$t"; done
+
+      - name: Build the archive
+        id: zip
+        run: |
+          set -euo pipefail
+          name="gen1_modern_bag_v${{ steps.v.outputs.version }}.zip"
+          zip -qr "$name" gen1_modern_bag -x '*.zip'
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Check the importer will take it
+        run: |
+          set -euo pipefail
+          rm -rf _verify && mkdir _verify
+          unzip -q "${{ steps.zip.outputs.name }}" -d _verify
+          # gen1_modern_bag/ at the archive root, not nested under a source-archive
+          # directory, and the upstream notice travelling with the code
+          test -f _verify/gen1_modern_bag/manifest.json
+          test -f _verify/gen1_modern_bag/LICENSE
+          cd _verify/gen1_modern_bag
+          luac5.4 -p main.lua
+          for t in tests/*.lua; do lua5.4 "$t"; done
+
+      - name: Take the notes out of the changelog
+        id: notes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import io, os, re
+          version = "${{ steps.v.outputs.version }}"
+          text = io.open("gen1_modern_bag/CHANGELOG.md", encoding="utf-8").read()
+          out, taking = [], False
+          for line in text.splitlines():
+              if re.match(r"^##\s+\[?" + re.escape(version) + r"\]?\s*$", line):
+                  taking = True
+                  continue
+              if taking and (line.startswith("## ") or line.startswith("---")):
+                  break
+              if taking:
+                  out.append(line)
+          body = "\n".join(out).strip() or f"Gen1ModernBag {version}."
+          io.open("RELEASE_NOTES.md", "w", encoding="utf-8").write(body + "\n")
+          print(body)
+          PY
+
+      - name: Publish it
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.v.outputs.tag }}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "Gen1ModernBag ${{ steps.v.outputs.version }}"
+            git push origin "$tag"
+            echo "tagged $tag"
+          fi
+
+          # Re-running a release replaces the asset rather than failing on it,
+          # so a fixed build can go out under the same tag.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${{ steps.zip.outputs.name }}" --clobber
+            echo "updated the asset on $tag"
+          else
+            gh release create "$tag" "${{ steps.zip.outputs.name }}" \
+              --title "Gen1ModernBag ${{ steps.v.outputs.version }}" \
+              --notes-file RELEASE_NOTES.md
+            echo "published $tag"
+          fi
