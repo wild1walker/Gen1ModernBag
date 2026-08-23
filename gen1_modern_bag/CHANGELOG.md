@@ -11,6 +11,13 @@
   the Left one mirrored. Angle brackets are not characters in Gen 1 text --
   they delimit control tokens like `<PK>` and `<PLAYER>` -- so they could not
   have been drawn even on a screen that draws a title.
+- Fixed the footer the same way. `START SEARCH`, `SEL TOOLS`, the money line
+  and the TM/HM hints were never drawn either, for the same reason: the
+  item-box path paints no footer. They now appear in the standard bottom text
+  box, one hint per line.
+- Re-broke the footer text so every line fits the box's eighteen columns.
+  `START FILTER  Y/I INFO` was twenty-one and would have wrapped mid-phrase;
+  it is now two lines. No hint was dropped.
 
 ---
 

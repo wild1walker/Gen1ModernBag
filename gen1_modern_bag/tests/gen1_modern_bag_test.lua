@@ -20,7 +20,7 @@ end
 -- the Left arrow is the cursor glyph mirrored about its own cell, and a
 -- no-op translate/scale would report it wherever it was asked to draw
 -- instead of where it lands.
-local painted = { text = {}, codes = {} }
+local painted = { text = {}, codes = {}, boxes = {} }
 local transform = { tx = 0, sx = 1 }
 local transformStack = {}
 
@@ -54,8 +54,29 @@ package.preload["src.render.Font"] = function()
     painted.codes[#painted.codes + 1] =
       { code = code, x = screenCell(x), y = y, mirrored = transform.sx < 0 }
   end
-  function Font.width(text) return #tostring(text) * 8 end
+  function Font.drawBox(tx, ty, tw, th)
+    painted.boxes[#painted.boxes + 1] = { tx = tx, ty = ty, tw = tw, th = th }
+  end
+  function Font.width(text)
+    text = tostring(text)
+    return (utf8.len(text) or #text) * 8
+  end
   return Font
+end
+
+-- The engine's paginate folds a line that overruns the box; these fit by
+-- construction, so splitting on newlines is the whole of its behaviour here.
+-- The width assertions below are what keep that true.
+package.preload["src.render.TextBox"] = function()
+  return {
+    paginate = function(text)
+      local lines = {}
+      for line in (tostring(text) .. "\n"):gmatch("(.-)\n") do
+        if line ~= "" then lines[#lines + 1] = line end
+      end
+      return { lines }
+    end,
+  }
 end
 
 package.preload["src.ui.Theme"] = function()
@@ -299,7 +320,7 @@ assert(ballsOpen.items[1].value == "POKE_BALL", "BALLS did not open to the corre
 -- what is painted, not just on the title field a previous release set and
 -- nothing ever drew.
 local function headerPaint(list)
-  painted.text, painted.codes = {}, {}
+  painted.text, painted.codes, painted.boxes = {}, {}, {}
   list:draw()
   local name
   for _, call in ipairs(painted.text) do
@@ -340,6 +361,70 @@ assert(name and name.text == "TM HM",
   "the pocket header did not follow the pocket switch: " .. tostring(name and name.text))
 assert(ballsOpen.title == "TM HM",
   "pocket title did not follow the pocket switch: " .. tostring(ballsOpen.title))
+
+-- The footer is the header's twin: the item-box path paints no footer either,
+-- so the control hints and the money line only reach the screen because the
+-- Bag draws them into the standard bottom text box.
+local FOOTER_MAX_COLS = 18   -- Theme.textBox.maxCols
+
+local function footerPaint(list)
+  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  list:draw()
+  local box
+  for _, b in ipairs(painted.boxes) do
+    if b.ty == 12 then box = b end
+  end
+  local lines = {}
+  for _, call in ipairs(painted.text) do
+    if call.y >= 104 then lines[#lines + 1] = call end
+  end
+  table.sort(lines, function(a, b) return a.y < b.y end)
+  return box, lines
+end
+
+-- TM/HM: three hints, one per line, in the box's top three interior rows.
+local box, lines = footerPaint(ballsOpen)
+assert(box and box.tx == 0 and box.tw == 20 and box.th == 6,
+  "the footer did not paint the standard bottom text box")
+assert(#lines == 3, "expected three footer lines, painted " .. #lines)
+assert(lines[1].text == "START FILTER" and lines[2].text == "Y/I INFO"
+  and lines[3].text == "SORT NUMBER",
+  "wrong TM/HM footer: " .. lines[1].text .. " / " .. lines[2].text .. " / " .. lines[3].text)
+for i, line in ipairs(lines) do
+  assert(line.x == 8, "footer line " .. i .. " is not at x = 8")
+  assert(line.y == 104 + (i - 1) * 8, "footer line " .. i .. " is on the wrong row")
+end
+
+-- Every pocket's footer has to fit the box, on every line. "SEL TOOLS  ¥%d"
+-- is the one that grows: at the Gen 1 money cap it is exactly eighteen.
+game.save.money = 999999
+for pocket = 1, 7 do
+  ballsOpen.modernBag.pocket = pocket
+  ballsOpen:update(0)
+  local _, painted_lines = footerPaint(ballsOpen)
+  assert(#painted_lines > 0, "pocket " .. pocket .. " painted no footer")
+  for _, line in ipairs(painted_lines) do
+    -- Columns, not bytes: the ¥ in the money line is one glyph and two bytes.
+    local cols = utf8.len(line.text) or #line.text
+    assert(cols <= FOOTER_MAX_COLS,
+      ("footer line %q is %d columns, over the %d the box holds")
+        :format(line.text, cols, FOOTER_MAX_COLS))
+  end
+  assert(#painted_lines <= 4, "the footer box holds four rows, not " .. #painted_lines)
+end
+game.save.money = 1234
+ballsOpen.modernBag.pocket = 4
+ballsOpen:update(0)
+
+-- POWER DESC is the widest sort label, and "SORT POWER DESC" is fifteen.
+ballsOpen.modernBag.machineSort = "POWER_DESC"
+ballsOpen:update(0)
+local _, sortLines = footerPaint(ballsOpen)
+assert(sortLines[3] and sortLines[3].text == "SORT POWER DESC",
+  "wrong sort line: " .. tostring(sortLines[3] and sortLines[3].text))
+assert(utf8.len(sortLines[3].text) <= FOOTER_MAX_COLS, "the widest sort label overruns the box")
+ballsOpen.modernBag.machineSort = "NUMBER"
+ballsOpen:update(0)
 assert(saved.last_pocket == "machines", "last-used pocket was not persisted")
 optionValues.opening_pocket = "last"
 local lastOpen = BagMenu.new(game, {})

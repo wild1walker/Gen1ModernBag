@@ -127,6 +127,53 @@ local function drawPocketHeader(list)
   love.graphics.setColor(1, 1, 1, 1)
 end
 
+-- Pocket footer.
+--
+-- Same story as the header: ListMenu:draw paints a footer in its plain
+-- full-screen branch, below the `return self:drawItemBox()` the Bag takes, so
+-- the control hints and the money line were never on screen either.
+--
+-- They go in the standard bottom text box, TEXT_BOX at tiles 0,12 - 19,17.
+-- Its top row is the row LIST_MENU_BOX ends on, which is how the two stack in
+-- vanilla when a message opens under the list. The interior is four 8px rows
+-- from y = 104, and text starts at x = 8, leaving the eighteen columns
+-- Theme.textBox.maxCols budgets for.
+local FOOTER_BOX = { tx = 0, ty = 12, tw = 20, th = 6 }
+local FOOTER_X = 8
+local FOOTER_TOP_Y = 104
+local FOOTER_ROWS = 4
+
+-- The engine's own wrapper, so a font mod's wider glyphs fold the same way
+-- here as they do in every other box.
+local function footerLines(text)
+  local TextBox = require("src.render.TextBox")
+  local lines = {}
+  for _, page in ipairs(TextBox.paginate(text)) do
+    for _, line in ipairs(page) do lines[#lines + 1] = line end
+  end
+  return lines
+end
+
+local function drawBagFooter(list)
+  local text = list.footer
+  if type(text) ~= "string" or text == "" then return end
+  local lines = footerLines(text)
+  local shown = math.min(#lines, FOOTER_ROWS)
+  if shown == 0 then return end
+
+  local Font = require("src.render.Font")
+  love.graphics.setColor(1, 1, 1, 1)
+  Font.drawBox(FOOTER_BOX.tx, FOOTER_BOX.ty, FOOTER_BOX.tw, FOOTER_BOX.th)
+  love.graphics.setColor(0, 0, 0, 1)
+  -- Centre the block in the interior: two lines sit on the middle two rows.
+  local y = FOOTER_TOP_Y + math.floor((FOOTER_ROWS - shown) / 2) * 8
+  for i = 1, shown do
+    Font.draw(lines[i], FOOTER_X, y)
+    y = y + 8
+  end
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
 local function rememberPocket(state)
   if not state or not state.mod or not state.mod.save then return end
   local pocket = POCKETS[state.pocket]
@@ -561,10 +608,13 @@ local function refreshPocket(list, preserveId)
   if pocket.id == "machines" then
     local sortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
     state.startActionLabel = "FILTER"
-    list.footer = "START FILTER  Y/I INFO\nSORT " .. sortLabel
+    -- One hint per line: the box is eighteen columns, and "START FILTER" and
+    -- "Y/I INFO" together are twenty-one.
+    list.footer = "START FILTER\nY/I INFO\nSORT " .. sortLabel
   else
     state.startActionLabel = "SEARCH"
-    list.footer = ("START SEARCH  SEL TOOLS  ¥%d"):format(list.game.save.money or 0)
+    -- "SEL TOOLS  ¥999999" is exactly eighteen, the widest this can get.
+    list.footer = ("START SEARCH\nSEL TOOLS  ¥%d"):format(list.game.save.money or 0)
   end
   restoreCursor(list, rows, preserveId)
 
@@ -1256,9 +1306,12 @@ local function decorateBag(game, opts, list, mod)
 
   function list:draw()
     baseDraw(self)
-    -- Only the item-box path leaves the title row unpainted. If a build
-    -- ever draws one itself, leave it alone rather than doubling up.
-    if self.itemBox then drawPocketHeader(self) end
+    -- Only the item-box path leaves the title and footer rows unpainted. If a
+    -- build ever draws them itself, leave it alone rather than doubling up.
+    if self.itemBox then
+      drawPocketHeader(self)
+      drawBagFooter(self)
+    end
   end
 
   refreshPocket(list)

@@ -106,6 +106,26 @@ The geometry is the `HEADER_*` constants at the top of
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua). Labels wider than the
 field are trimmed to fit, so the arrows are never pushed out of the box.
 
+### Footer
+
+The control hints and the money line had the same problem and are fixed the
+same way. `ListMenu:draw` paints a footer only in the branch the Bag returns
+before reaching, so `START SEARCH`, `SEL TOOLS` and the money were set on
+`list.footer` and never drawn — in 1.1.0 and in every release before it.
+
+They now go in the standard bottom text box, `TEXT_BOX` at tiles 0,12–19,17.
+Its top row is the row `LIST_MENU_BOX` ends on, which is how the two stack in
+vanilla when a message opens under the item list. The interior holds four 8px
+rows from y = 104, and the block is centred in them: a two-line footer sits on
+the middle two.
+
+The box is eighteen columns wide, so the footer text is one hint per line —
+`START FILTER  Y/I INFO` is twenty-one together and would have wrapped
+mid-phrase. Nothing was dropped, and the widest line either footer can produce
+is `SEL TOOLS  ¥999999`, which is exactly eighteen. Lines still run through the
+engine's own `TextBox.paginate`, so a font mod's wider glyphs fold here the way
+they do in every other box.
+
 ## Installation
 
 1. Download `gen1_modern_bag_v1.1.1.zip` from the releases page.
@@ -144,6 +164,10 @@ arrows always apply.
 
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
+
+Below the list, a text box carries the controls for the open pocket and your
+money — `START SEARCH` / `SEL TOOLS` / `¥1234`, and `START FILTER` /
+`Y/I INFO` / the current sort in TM HM.
 
 ### Opening pocket and fast scrolling
 
