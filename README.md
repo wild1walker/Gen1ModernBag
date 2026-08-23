@@ -1,4 +1,16 @@
-# Gen1ModernBag
+<p align="center">
+  <a href="https://wild1walker.github.io/Gen1Wild/"><img src="docs/banner.png" alt="Gen1Wild" width="400"></a>
+</p>
+
+<h1 align="center">Gen1ModernBag</h1>
+
+<p align="center">
+  <a href="https://wild1walker.github.io/Gen1Wild/"><img src="docs/lineup.png" alt="Check out my other mods!" width="880"></a>
+</p>
+
+<p align="center">
+  <b>Seven pockets, sorted, searchable, and never full</b>
+</p>
 
 Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets,
 sorts items automatically, and adds Favorites, persistent pinned items, quick
