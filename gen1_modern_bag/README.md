@@ -12,11 +12,15 @@ Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets, 
 - **KEY ITEMS** — non-tossable and key items.
 - **OTHER** — stones, Repels, Escape Rope, fossils and everything not covered above.
 
-The header at the top of the Bag names the open pocket between the arrows that
-change it — `<     BALLS      >` — so which page you are on and which way to go
-are both visible at a glance. Pockets wrap around, so both arrows always apply.
+The top row of the item window names the open pocket between the arrows that
+change it — `◀ BALLS ▶` — so which page you are on and which way to go are both
+visible at a glance. Pockets wrap around, so both arrows always apply.
 
 Press **Left/Right** to change pocket. The opening pocket is now configurable in **MODS → Gen1ModernBag → Options**. The default remains **MEDICINE**, and **LAST USED** can be selected if you want the Bag to reopen on the pocket you used most recently. Up/Down, A and B keep their original meanings.
+
+Below the list, a text box carries the controls for the open pocket and your
+money — `START SEARCH` / `SEL TOOLS` / `¥1234`, and `START FILTER` /
+`Y/I INFO` / the current sort in TM HM.
 
 ## Opening pocket and fast scrolling
 

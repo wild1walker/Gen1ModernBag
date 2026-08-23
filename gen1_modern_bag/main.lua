@@ -65,20 +65,113 @@ local function scrollConfig(mod)
   return SCROLL_SPEEDS[speed] or SCROLL_SPEEDS.fast
 end
 
--- Pocket header: the pocket name centered between the Left/Right arrows that
--- switch pockets, e.g. "<     BALLS      >". Gen 1 glyphs are 8px wide and the
--- title row runs from x = 8 to the item window's inner right edge at x = 152,
--- so 18 glyphs are drawable; the arrows take the first and last of them.
-local HEADER_WIDTH = 18
+-- Pocket header.
+--
+-- The Bag is a ListMenu the engine opens with itemBox = true, and that path
+-- draws the LIST_MENU_BOX, its rows, the quantities and the cursor -- and
+-- nothing else. `self.title` is only ever drawn by ListMenu:draw's plain
+-- full-screen branch (src/ui/ListMenu.lua), which the Bag returns before
+-- reaching, so a title assigned to the Bag list never reaches the screen.
+-- The name has to be drawn here; refreshPocket still keeps list.title in
+-- step for Gen1 Modern UI and anything else that reads it.
+--
+-- LIST_MENU_BOX is tiles 4,2 - 19,12: its interior starts at y = 24 and the
+-- first item name is drawn at y = 32, so the row at y = 24 is empty and sits
+-- inside the box's own white fill. The interior spans x = 40 to x = 152 --
+-- fourteen 8px columns -- and the arrows take the first and the last.
+local HEADER_Y = 24
+local HEADER_LEFT_X = 40
+local HEADER_RIGHT_X = 144
+local HEADER_NAME_X = 48
+local HEADER_NAME_WIDTH = HEADER_RIGHT_X - HEADER_NAME_X
 
-local function pocketHeader(index)
-  local pocket = POCKETS[index]
-  local label = pocket and pocket.label or ""
-  local inner = HEADER_WIDTH - 2
-  if #label > inner then label = label:sub(1, inner) end
-  local pad = inner - #label
-  local left = math.floor(pad / 2)
-  return "<" .. (" "):rep(left) .. label .. (" "):rep(pad - left) .. ">"
+-- Angle brackets are not glyphs. Gen 1 text encodes control tokens as
+-- <PK>, <PLAYER>, <LINE> and the like, and charmap.asm has no '<' or '>' of
+-- its own, so "<  MEDICINE  >" cannot be drawn as text at all.
+--
+-- There is no left-pointing arrow either: the arrow glyphs stop at
+-- ▷ $EC, ▶ $ED and ▼ $EE. The Left arrow is therefore the cursor glyph
+-- mirrored about its own cell, which is the shape a left arrow would have.
+local function drawMirroredCode(Font, code, x, y)
+  love.graphics.push()
+  love.graphics.translate(x + 8, 0)
+  love.graphics.scale(-1, 1)
+  Font.drawCode(code, 0, y)
+  love.graphics.pop()
+end
+
+-- Trim to a pixel budget rather than a character count: a font mod can ship
+-- variable-width glyphs, and Font.width is what measures them.
+local function fitLabel(Font, label, budget)
+  while #label > 0 and Font.width(label) > budget do
+    label = label:sub(1, #label - 1)
+  end
+  return label
+end
+
+local function drawPocketHeader(list)
+  local state = list.modernBag
+  local pocket = state and POCKETS[state.pocket]
+  if not pocket then return end
+  local Font = require("src.render.Font")
+  local Theme = require("src.ui.Theme")
+  local label = fitLabel(Font, pocket.label, HEADER_NAME_WIDTH)
+
+  -- drawItemBox leaves the colour white; text in this box is black.
+  love.graphics.setColor(0, 0, 0, 1)
+  -- Centre on the 8px column grid the rest of the box sits on.
+  local slack = math.max(0, HEADER_NAME_WIDTH - Font.width(label))
+  Font.draw(label, HEADER_NAME_X + math.floor(slack / 16) * 8, HEADER_Y)
+  drawMirroredCode(Font, Theme.cursor, HEADER_LEFT_X, HEADER_Y)
+  Font.drawCode(Theme.cursor, HEADER_RIGHT_X, HEADER_Y)
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Pocket footer.
+--
+-- Same story as the header: ListMenu:draw paints a footer in its plain
+-- full-screen branch, below the `return self:drawItemBox()` the Bag takes, so
+-- the control hints and the money line were never on screen either.
+--
+-- They go in the standard bottom text box, TEXT_BOX at tiles 0,12 - 19,17.
+-- Its top row is the row LIST_MENU_BOX ends on, which is how the two stack in
+-- vanilla when a message opens under the list. The interior is four 8px rows
+-- from y = 104, and text starts at x = 8, leaving the eighteen columns
+-- Theme.textBox.maxCols budgets for.
+local FOOTER_BOX = { tx = 0, ty = 12, tw = 20, th = 6 }
+local FOOTER_X = 8
+local FOOTER_TOP_Y = 104
+local FOOTER_ROWS = 4
+
+-- The engine's own wrapper, so a font mod's wider glyphs fold the same way
+-- here as they do in every other box.
+local function footerLines(text)
+  local TextBox = require("src.render.TextBox")
+  local lines = {}
+  for _, page in ipairs(TextBox.paginate(text)) do
+    for _, line in ipairs(page) do lines[#lines + 1] = line end
+  end
+  return lines
+end
+
+local function drawBagFooter(list)
+  local text = list.footer
+  if type(text) ~= "string" or text == "" then return end
+  local lines = footerLines(text)
+  local shown = math.min(#lines, FOOTER_ROWS)
+  if shown == 0 then return end
+
+  local Font = require("src.render.Font")
+  love.graphics.setColor(1, 1, 1, 1)
+  Font.drawBox(FOOTER_BOX.tx, FOOTER_BOX.ty, FOOTER_BOX.tw, FOOTER_BOX.th)
+  love.graphics.setColor(0, 0, 0, 1)
+  -- Centre the block in the interior: two lines sit on the middle two rows.
+  local y = FOOTER_TOP_Y + math.floor((FOOTER_ROWS - shown) / 2) * 8
+  for i = 1, shown do
+    Font.draw(lines[i], FOOTER_X, y)
+    y = y + 8
+  end
+  love.graphics.setColor(1, 1, 1, 1)
 end
 
 local function rememberPocket(state)
@@ -509,14 +602,19 @@ local function refreshPocket(list, preserveId)
   local pocket = POCKETS[state.pocket]
   local rows = itemRows(list.game, pocket.id, state)
   list.items = rows
-  list.title = pocketHeader(state.pocket)
+  -- Not drawn by the engine for an item-box list (see the pocket header
+  -- above), but Gen1 Modern UI and the compatibility contract read it.
+  list.title = pocket.label
   if pocket.id == "machines" then
     local sortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
     state.startActionLabel = "FILTER"
-    list.footer = "START FILTER  Y/I INFO\nSORT " .. sortLabel
+    -- One hint per line: the box is eighteen columns, and "START FILTER" and
+    -- "Y/I INFO" together are twenty-one.
+    list.footer = "START FILTER\nY/I INFO\nSORT " .. sortLabel
   else
     state.startActionLabel = "SEARCH"
-    list.footer = ("START SEARCH  SEL TOOLS  ¥%d"):format(list.game.save.money or 0)
+    -- "SEL TOOLS  ¥999999" is exactly eighteen, the widest this can get.
+    list.footer = ("START SEARCH\nSEL TOOLS  ¥%d"):format(list.game.save.money or 0)
   end
   restoreCursor(list, rows, preserveId)
 
@@ -1208,6 +1306,12 @@ local function decorateBag(game, opts, list, mod)
 
   function list:draw()
     baseDraw(self)
+    -- Only the item-box path leaves the title and footer rows unpainted. If a
+    -- build ever draws them itself, leave it alone rather than doubling up.
+    if self.itemBox then
+      drawPocketHeader(self)
+      drawBagFooter(self)
+    end
   end
 
   refreshPocket(list)
