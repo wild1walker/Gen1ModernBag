@@ -1,0 +1,14 @@
+# Release archives built from the source tree
+*.zip
+
+# Lua bytecode
+*.luac
+luac.out
+
+# Editor and OS scratch files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/

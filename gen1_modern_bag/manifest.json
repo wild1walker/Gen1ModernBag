@@ -1,0 +1,23 @@
+{
+  "id": "gen1_modern_bag",
+  "name": "Gen1ModernBag",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "content",
+  "category": "UI",
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "priority": 520,
+  "affects_link": false,
+  "permissions": [
+    "engine_internals"
+  ],
+  "dependencies": [],
+  "optional_dependencies": [
+    "gen1_modern_ui"
+  ],
+  "conflicts": [
+    "modern_bag"
+  ],
+  "description": "Gen1ModernBag: modern inventory pockets with configurable opening tab, hold-to-fast-scroll, Favorites, pinned items, unlimited capacity, touch-friendly keyboard search, TM/HM tools, corrected machine-label width, and optional Gen1 Modern UI presentation."
+}
