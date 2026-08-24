@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.0
+
+- **The Left/Right arrows are gone from the pocket header.** The pocket name is
+  now the only thing on the item window's top border, so it is drawn by the
+  same code every other window title is: centred between the corners, a tile of
+  clearance at each end, the rule running up to it and on after it.
+- That also gives the longest pocket names room. The arrows took the outermost
+  column at each end, which left `FAVORITES` and `KEY ITEMS` a single column of
+  rule to sit in; every pocket now has rule on both sides.
+- Left and Right still change pocket, and still wrap around. Nothing on screen
+  spells them out any more, the same way nothing spells out START and SELECT.
+- **The search keyboard's match count is gone.** The results page shows the
+  matches themselves, so counting them first was work done twice -- and it was
+  the only reason the search re-ran on every keystroke.
+- `FIND` moved down a row, off the title it was crowded against.
+
+---
+
 ## 1.3.1
 
 - Border labels are drawn a pixel lower, so they stay off the frame's outer

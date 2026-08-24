@@ -27,7 +27,7 @@ below it.
 
 Essentially all of the functionality described here is upstream's work. The
 changes in Gen1ModernBag are a corrected machine-label width — one constant —
-the arrowed pocket header, and the presentation of the money line and of the
+the pocket header, and the presentation of the money line and of the
 menus this mod draws over the Bag, all described under
 [The changes from upstream](#the-changes-from-upstream).
 
@@ -76,8 +76,11 @@ overlap because overflowing names were colliding with it.
 ### Pocket header
 
 Upstream titles the Bag `MEDICINE 2/7`: the pocket name and its position in the
-ring. Gen1ModernBag heads it `◀ MEDICINE ▶` instead — the name between the
-Left/Right keys that change pocket.
+ring. Gen1ModernBag heads it `MEDICINE` instead — just the name, on the item
+window's own top border. Left and Right still change pocket and still wrap
+around; nothing on screen spells them out, the same way nothing spells out
+START and SELECT. Up to 1.3.1 the header carried a `◀` and a `▶` around the
+name.
 
 The header is drawn by the mod rather than set as the list's title, because a
 title set on the Bag is never drawn. `BagMenu` builds its `ListMenu` with
@@ -93,16 +96,15 @@ It goes on the item window's own top border, which is where Gen 1 titles a
 window: the border line runs up to the label and continues after it.
 `LIST_MENU_BOX` is tiles 4,2–19,12, so that border is the row at y = 16 and its
 corners are the columns at x = 32 and x = 152. The fourteen columns between
-them are the label's, and the arrows take the first and the last, leaving
-twelve for the name. The longest pocket labels (`FAVORITES`, `KEY ITEMS`) are
-nine.
+them are the label's. The longest pocket labels (`FAVORITES`, `KEY ITEMS`) are
+nine, which leaves rule on both sides; the arrows used to take the outermost
+column at each end, and those two names were left with a single column of it.
 
 Drawing onto a border needs the line knocked out from under the label first.
 Glyphs are drawn as a mask — `Font.draw` paints them in whatever colour is set,
 which is how black text lands on a box's white fill — so a label drawn straight
 onto the line would have it running through the letters. The header knocks out
-one run per glyph group, under the Left arrow, under the name and under the
-Right arrow, so the line survives in the gaps between them.
+one run, under the name, so the line survives either side of it.
 
 The label is also drawn a pixel lower than the tile it sits on. The frame
 carries a one-pixel white margin around the whole window, outside its rule, and
@@ -121,24 +123,15 @@ label does not move; the clearance is bought in tiles either side of it, and is
 clamped so it can never rub out a corner glyph. The same applies to every
 window this mod titles, so a popup is sized for its title *plus* that
 clearance: a title wider than `tw - 4` tiles has nowhere to put it and would
-run into a corner — the same defect at the other end. The arrows are the
-exception: they sit against the corners already, so clearance on their outer
-side would be the thing that rubs one out.
+run into a corner — the same defect at the other end.
 
 Before 1.3.0 the header sat on the empty interior row below the border instead:
 the box interior starts at y = 24 and the first item name is drawn at y = 32, so
 the row at y = 24 is unused.
 
-The arrows are the engine's cursor glyph, `Theme.cursor`, and the Left one is
-that glyph mirrored about its own cell. Gen 1 has no left-pointing arrow —
-`charmap.asm` carries `▷ $EC`, `▲ $ED` and `▼ $EE` and stops there — and it has
-no `<` or `>` either: angle brackets delimit control tokens like `<PK>`,
-`<PLAYER>` and `<LINE>`, so `<  MEDICINE  >` was never text the font could
-draw.
-
 The geometry is the `HEADER_*` constants at the top of
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua). Labels wider than the
-field are trimmed to fit, so the arrows are never pushed out of the box.
+field are trimmed to fit, with room kept for the clearance at each end.
 
 ### Money, and the menus drawn over the Bag
 
@@ -156,8 +149,8 @@ puts it on that window's bottom border instead, right-aligned, the same way the
 pocket name sits on the top one — so there is no second frame at all and the
 amount lands exactly where the bottom-right of the item window is.
 `LIST_MENU_BOX` ends on tile row 12, so that border is the row at y = 96, and
-its last column before the corner ends at x = 152 — the column the Right arrow
-occupies on the top border. The geometry is the `MONEY_*` constants in
+its last column before the corner ends at x = 152. The geometry is the
+`MONEY_*` constants in
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua).
 
 The menus this mod opens on top of the Bag had a related problem. `ITEM
@@ -204,7 +197,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.3.1.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.4.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -233,10 +226,9 @@ The manifest declares `"conflicts": ["modern_bag"]`. Both mods decorate the same
 - **KEY ITEMS** — non-tossable and key items.
 - **OTHER** — stones, Repels, Escape Rope, fossils and everything not covered above.
 
-Each pocket is headed by its own name between the arrows that change pocket —
-`◀ BALLS ▶`, on the top row of the item window — so the page you are on and the
-direction keys that move off it read as one line. Pockets wrap around, so both
-arrows always apply.
+Each pocket is headed by its own name on the top border of the item window —
+`BALLS` — the way Gen 1 titles a window. Pockets wrap around in both
+directions.
 
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
@@ -293,7 +285,10 @@ Press **SELECT** from any pocket except TM/HM.
 - **START**, the Modern UI **SEARCH** button, or **GO** shows all matches.
 
 Search covers every pocket and matches both the displayed name and the internal
-item identifier. An empty query lists the whole Bag alphabetically.
+item identifier. An empty query lists the whole Bag alphabetically. The
+keyboard shows the query and nothing else: it carried a live match count up to
+1.3.1, which was the results page's job done twice over, and the only reason
+the search re-ran on every keystroke.
 
 The matches do not open a page of their own. They are handed back to the Bag,
 which grows a **RESULTS** pocket for them and puts you on it — so they are read
@@ -363,13 +358,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.3.1 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.4.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.3.1.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.4.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees

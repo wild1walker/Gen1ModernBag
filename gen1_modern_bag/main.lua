@@ -81,14 +81,12 @@ end
 -- It goes on the box's own top border, which is where Gen 1 titles a window:
 -- the border line runs up to the label and continues after it.
 --
--- LIST_MENU_BOX is tiles 4,2 - 19,12, so that border is the row at y = 16 and
--- the corners are the columns at x = 32 and x = 152. The fourteen columns
--- between them are the label's, and the arrows take the first and the last.
-local HEADER_Y = 16
-local HEADER_LEFT_X = 40
-local HEADER_RIGHT_X = 144
-local HEADER_NAME_X = 48
-local HEADER_NAME_WIDTH = HEADER_RIGHT_X - HEADER_NAME_X
+-- LIST_MENU_BOX is tiles 4,2 - 19,12, and the fourteen columns between its
+-- corners are the label's. Nothing else is on that border: up to 1.3.1 the
+-- Left/Right arrows took the outermost column at each end, which left a
+-- nine-letter pocket name only one column of rule to sit in.
+local ITEM_BOX = { tx = 4, ty = 2, tw = 16, th = 11 }
+local HEADER_Y = ITEM_BOX.ty * 8
 
 -- Knock the border line out from under a label.
 --
@@ -145,21 +143,6 @@ local function drawBorderLabel(Font, text, tx, ty, tw)
   return x
 end
 
--- Angle brackets are not glyphs. Gen 1 text encodes control tokens as
--- <PK>, <PLAYER>, <LINE> and the like, and charmap.asm has no '<' or '>' of
--- its own, so "<  MEDICINE  >" cannot be drawn as text at all.
---
--- There is no left-pointing arrow either: the arrow glyphs stop at
--- ▷ $EC, ▶ $ED and ▼ $EE. The Left arrow is therefore the cursor glyph
--- mirrored about its own cell, which is the shape a left arrow would have.
-local function drawMirroredCode(Font, code, x, y)
-  love.graphics.push()
-  love.graphics.translate(x + 8, 0)
-  love.graphics.scale(-1, 1)
-  Font.drawCode(code, 0, y)
-  love.graphics.pop()
-end
-
 -- Trim to a pixel budget rather than a character count: a font mod can ship
 -- variable-width glyphs, and Font.width is what measures them.
 --
@@ -192,34 +175,17 @@ local function fitLabel(Font, label, budget)
   return label
 end
 
+-- The pocket name is a border label like any other window's title now, so it
+-- is drawn by the same code: centred between the corners, a tile of clearance
+-- at each end, the rule running up to it and on after it.
 local function drawPocketHeader(list)
   local state = list.modernBag
   local pocket = state and POCKETS[state.pocket]
   if not pocket then return end
   local Font = require("src.render.Font")
-  local Theme = require("src.ui.Theme")
-  -- Two of the field's twelve columns are the name's clearance.
-  local label = fitLabel(Font, pocket.label,
-    HEADER_NAME_WIDTH - BORDER_LABEL_PAD * 2)
-  -- Centre the name between the arrows, which keep their own columns on every
-  -- pocket so the keys that change pocket never move.
-  local slack = math.max(0, HEADER_NAME_WIDTH - Font.width(label))
-  local nameX = HEADER_NAME_X + math.floor(slack / 16) * 8
-
-  -- One run per glyph group, so the border survives in the gaps between them.
-  -- The name is padded; the arrows are not, because they sit against the
-  -- corner glyphs and clearance on their outer side would rub one out.
-  clearBorderRun(HEADER_LEFT_X, HEADER_Y, 8)
-  clearBorderRun(nameX - BORDER_LABEL_PAD, HEADER_Y,
-    Font.width(label) + BORDER_LABEL_PAD * 2)
-  clearBorderRun(HEADER_RIGHT_X, HEADER_Y, 8)
-
-  -- Drawn a pixel below the tile, clear of the frame's outer white margin.
-  local textY = HEADER_Y + WINDOW_EDGE
-  love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(label, nameX, textY)
-  drawMirroredCode(Font, Theme.cursor, HEADER_LEFT_X, textY)
-  Font.drawCode(Theme.cursor, HEADER_RIGHT_X, textY)
+  -- Corners, and a tile of clearance inside each.
+  local label = fitLabel(Font, pocket.label, (ITEM_BOX.tw - 4) * 8)
+  drawBorderLabel(Font, label, ITEM_BOX.tx, ITEM_BOX.ty, ITEM_BOX.tw)
   love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -234,8 +200,9 @@ end
 -- The amount stops one column short of the corner, at x = 144, so the tile
 -- between it and the corner glyph is its clearance -- the same tile the rule
 -- gives it at the other end.
-local MONEY_Y = 96
-local MONEY_RIGHT_X = 144
+local MONEY_Y = (ITEM_BOX.ty + ITEM_BOX.th - 1) * 8
+local MONEY_RIGHT_X = (ITEM_BOX.tx + ITEM_BOX.tw - 2) * 8
+local MONEY_LEFT_LIMIT = (ITEM_BOX.tx + 1) * 8 + BORDER_LABEL_PAD
 
 local function moneyText(game)
   local amount = math.floor(tonumber(game and game.save and game.save.money) or 0)
@@ -246,10 +213,8 @@ local function drawBagMoney(list)
   local text = list.footer
   if type(text) ~= "string" or text == "" then return end
   local Font = require("src.render.Font")
-  -- Never past its own clearance at the other end, however wide the glyphs
-  -- are: x = 40 is the column the Left arrow sits in on the top border.
-  local x = math.max(HEADER_LEFT_X + BORDER_LABEL_PAD,
-    MONEY_RIGHT_X - Font.width(text))
+  -- Never past its own clearance at the other end, however wide the glyphs are.
+  local x = math.max(MONEY_LEFT_LIMIT, MONEY_RIGHT_X - Font.width(text))
   clearBorderRun(x - BORDER_LABEL_PAD,
     MONEY_Y, (MONEY_RIGHT_X - x) + BORDER_LABEL_PAD * 2)
   love.graphics.setColor(0, 0, 0, 1)
@@ -836,7 +801,9 @@ local SEARCH_GRID = {
 local KEYBOARD_LEFT_X = WINDOW_LEFT_X
 local KEYBOARD_INNER_W = WINDOW_INNER_W
 local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
-local KEYBOARD_HEADER_Y = WINDOW_TOP_Y
+-- A row below the window's first interior row, so the query is not crowded up
+-- against the title on the border above it.
+local KEYBOARD_HEADER_Y = WINDOW_TOP_Y + 8
 local KEYBOARD_GRID_TOP = 40
 local KEYBOARD_ROW_H = 16
 local KEYBOARD_ACTION_Y = 104
@@ -1004,21 +971,10 @@ function QuickSearch:update(dt)
   end
 end
 
--- Recomputed only when the query changes: the count is drawn every frame and
--- the Bag it counts cannot change while the keyboard is open.
-function QuickSearch:matchCount()
-  if self.matchQuery ~= self.query then
-    self.matchQuery = self.query
-    self.matchTotal = #searchRows(self.game, self.query, self.bagList.modernBag)
-  end
-  return self.matchTotal or 0
-end
-
 function QuickSearch:draw()
   drawSearchKeyboard(self, {
     -- "FIND: " plus the twelve glyphs the query is capped at is eighteen.
     "FIND: " .. (self.query == "" and "ALL" or self.query),
-    "MATCHES: " .. tostring(self:matchCount()),
   })
 end
 

@@ -413,32 +413,24 @@ for _, call in ipairs(painted.text) do
   assert(call.y ~= ITEM_BOX_TOP_Y,
     ("%q sits on the frame's outer white margin"):format(call.text))
 end
-for _, call in ipairs(painted.codes) do
-  assert(call.y ~= ITEM_BOX_TOP_Y, "an arrow sits on the frame's outer white margin")
-end
 assert(name.text == "BALLS", "wrong pocket name: " .. tostring(name.text))
--- Centred on the 8px grid inside the item box: 40 is the left arrow's column,
--- 144 the right arrow's, and the name is centred in the twelve between them.
--- BALLS is 5 of those 12, so it starts 3 columns in, at x = 48 + 24.
-assert(name.x == 72, "pocket name is not centred: x = " .. tostring(name.x))
-assert(#arrows == 2, "the pocket header did not paint both arrows")
--- Gen 1 has no left-pointing arrow, so the Left one is the cursor glyph
--- mirrored: same code, landing in the column left of the name.
-assert(arrows[1].x == 40 and arrows[1].mirrored,
-  "the Left arrow is not mirrored into column 40: x = " .. tostring(arrows[1].x))
-assert(arrows[2].x == 144 and not arrows[2].mirrored,
-  "the Right arrow is not in column 144: x = " .. tostring(arrows[2].x))
-assert(arrows[1].code == arrows[2].code, "the two arrows should be one glyph")
+-- Nothing else is on that border. Up to 1.3.1 the Left/Right arrows took the
+-- outermost column at each end, which left a nine-letter pocket name a single
+-- column of rule to sit in.
+assert(#arrows == 0, "the pocket header still paints arrows")
 
--- The border line is knocked out under each glyph group and survives in the
--- gaps between them, so the line runs up to the label and continues after it.
--- Without the knock-out the line would strike through the letters: glyphs are
--- drawn as a mask, in whatever colour is set.
-assert(clearsOnRow(ITEM_BOX_TOP_Y) == 3,
-  "expected one knock-out per glyph group, got " .. clearsOnRow(ITEM_BOX_TOP_Y))
-assert(clearedAt(40, ITEM_BOX_TOP_Y), "the Left arrow was drawn onto the border line")
+-- Centred between the corners, on the 8px grid the rest of the box sits on.
+-- The fourteen columns between them are the label's, and BALLS is five of
+-- them, so it starts four columns in: x = 40 + 32.
+assert(name.x == 72, "pocket name is not centred: x = " .. tostring(name.x))
+
+-- The border line is knocked out under the label and survives either side, so
+-- the line runs up to it and continues after it. Without the knock-out the
+-- line would strike through the letters: glyphs are drawn as a mask, in
+-- whatever colour is set.
+assert(clearsOnRow(ITEM_BOX_TOP_Y) == 1,
+  "expected one knock-out, got " .. clearsOnRow(ITEM_BOX_TOP_Y))
 assert(clearedAt(72, ITEM_BOX_TOP_Y), "the pocket name was drawn onto the border line")
-assert(clearedAt(144, ITEM_BOX_TOP_Y), "the Right arrow was drawn onto the border line")
 -- The knock-out runs a tile past each end of the name, so the rule stops
 -- short of the letters instead of ending flush against them. Knocking out
 -- exactly the text's width is what src/ui/Menu.lua does with its own title,
@@ -453,6 +445,39 @@ assert(not clearedAt(name.x - 16, ITEM_BOX_TOP_Y),
   "the name's knock-out ran past its own clearance")
 assert(not clearedAt(nameRight + 8, ITEM_BOX_TOP_Y),
   "the name's knock-out ran past its own clearance")
+-- Which the longest pocket labels now get too: without the arrows there are
+-- four spare columns even for a nine-letter name.
+for _, longPocket in ipairs({ 1, 6 }) do        -- FAVORITES, KEY ITEMS
+  ballsOpen.modernBag.pocket = longPocket
+  ballsOpen:update(0)
+  local longName = headerPaint(ballsOpen)
+  local right = longName.x + (utf8.len(longName.text) or 0) * 8
+  assert(utf8.len(longName.text) == 9, "expected a nine-letter pocket name")
+  assert(not clearedAt(longName.x - 16, ITEM_BOX_TOP_Y)
+    and not clearedAt(right + 8, ITEM_BOX_TOP_Y),
+    ("%q leaves no rule either side of it"):format(longName.text))
+end
+ballsOpen.modernBag.pocket = 3
+ballsOpen:update(0)
+
+-- A pocket name is trimmed to leave room for its own clearance, not just to
+-- the space between the corners: the label has to fit tw - 4 tiles, or its
+-- padded run would be clamped and lose the clearance at one end. No stock
+-- label is long enough to tell the two budgets apart, but a font mod with
+-- wider glyphs is, so measure with one.
+local ITEM_BOX_TW = 16
+local Font = require("src.render.Font")
+local realWidth = Font.width
+Font.width = function(text) return #Font.split(text) * 16 end
+ballsOpen.modernBag.pocket = 1          -- FAVORITES, the longest label
+local wideName = headerPaint(ballsOpen)
+assert(wideName, "the header painted nothing with a wide font")
+assert(Font.width(wideName.text) <= (ITEM_BOX_TW - 4) * 8,
+  ("%q is %dpx, over the %dpx that leaves room for its clearance")
+    :format(wideName.text, Font.width(wideName.text), (ITEM_BOX_TW - 4) * 8))
+Font.width = realWidth
+ballsOpen.modernBag.pocket = 3
+ballsOpen:update(0)
 assert(ballsOpen.title == "BALLS",
   "wrong pocket title: " .. tostring(ballsOpen.title))
 
@@ -797,6 +822,19 @@ end
 assert(kbTitle and kbTitle.text == "QUICK SEARCH",
   "the keyboard is not titled on its top border: " .. tostring(kbTitle and kbTitle.text))
 assert(clearedAt(kbTitle.x, 0), "the keyboard title was drawn onto the border line")
+
+-- FIND sits a row below the window's first interior row, so the query is not
+-- crowded up against the title on the border above it. The match count is
+-- gone: the results page shows the matches themselves.
+local findLine, firstRowLine
+for _, call in ipairs(painted.text) do
+  if call.y == 16 then findLine = call end
+  if call.y == 8 then firstRowLine = call end
+  assert(not call.text:find("MATCHES", 1, true), "the match count is still drawn")
+end
+assert(findLine and findLine.text:find("FIND:", 1, true),
+  "FIND is not on the row below the window's first: " .. tostring(findLine and findLine.text))
+assert(not firstRowLine, "something is still drawn tight under the title")
 for _, call in ipairs(painted.text) do
   assert(call.y ~= 0, ("%q sits on the frame's outer white margin"):format(call.text))
 end
