@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.3.0
+
+- **Search results are a page of the Bag now, not a page of their own.** A
+  search hands its matches back to the Bag, which grows a **RESULTS** pocket
+  for them and puts you on it, so they are read in the item window with the
+  pocket header, the counts and the row markers -- and every Bag control works
+  on them. They used to be listed on a separate full-screen `ListMenu` with no
+  frame.
+- RESULTS only exists while a search is loaded into it: Left and Right step
+  over it before the first search, it is never what LAST USED reopens the Bag
+  on, and it is gone the next time the Bag opens. It is not a pocket an item
+  can be filed in, and `exports.pockets()` does not list it.
+- The page is rebuilt from the search rather than held as a snapshot, so its
+  counts follow the Bag as items are used up and reacquired.
+- The TM/HM filters' **SHOW RESULTS** fills the same page, which retires the
+  last of the undecorated result lists.
+- Y/I opens move information wherever a machine is reached -- the results page
+  and FAVORITES included -- rather than only in the TM/HM pocket.
+- **Window titles moved onto the window's own top border**, which is where Gen
+  1 titles a box: the border line runs up to the label and continues after it.
+  This is the pocket header on the item window, and the titles of ITEM OPTIONS,
+  the TM/HM filters and their pickers, the search keyboard and MOVE
+  INFORMATION.
+- Drawing onto a border needs the line knocked out from under the label first.
+  Glyphs are drawn as a mask, painted in whatever colour is set, so a label
+  drawn straight onto the line would have it running through the letters. The
+  pocket header knocks out one run per glyph group -- under each arrow and
+  under the name -- so the line survives in the gaps between them.
+- The money moved to the item window's bottom border, right-aligned under its
+  bottom-right corner, instead of the little window 1.2.0 hung under that
+  corner. There is no second frame on the Bag screen at all now.
+- Popup menus lost the title row and the blank row under it, so a four-option
+  menu is a four-option window.
+- MOVE INFORMATION gained a row from the same change and spends it on the
+  effect, which now wraps over four lines instead of three.
+
+---
+
 ## 1.2.0
 
 - **SELECT now searches and START now opens ITEM OPTIONS.** The two were the

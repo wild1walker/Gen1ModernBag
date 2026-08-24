@@ -20,6 +20,9 @@ local POCKETS = {
   { id = "battle", label = "BATTLE" },
   { id = "key", label = "KEY ITEMS" },
   { id = "other", label = "OTHER" },
+  -- A search fills this one and puts you on it; it is not in the ring until
+  -- then, and it is gone the next time the Bag opens.
+  { id = "results", label = "RESULTS", virtual = true, transient = true },
 }
 
 local OPENING_POCKET_VALUES = {
@@ -75,15 +78,46 @@ end
 -- The name has to be drawn here; refreshPocket still keeps list.title in
 -- step for Gen1 Modern UI and anything else that reads it.
 --
--- LIST_MENU_BOX is tiles 4,2 - 19,12: its interior starts at y = 24 and the
--- first item name is drawn at y = 32, so the row at y = 24 is empty and sits
--- inside the box's own white fill. The interior spans x = 40 to x = 152 --
--- fourteen 8px columns -- and the arrows take the first and the last.
-local HEADER_Y = 24
+-- It goes on the box's own top border, which is where Gen 1 titles a window:
+-- the border line runs up to the label and continues after it.
+--
+-- LIST_MENU_BOX is tiles 4,2 - 19,12, so that border is the row at y = 16 and
+-- the corners are the columns at x = 32 and x = 152. The fourteen columns
+-- between them are the label's, and the arrows take the first and the last.
+local HEADER_Y = 16
 local HEADER_LEFT_X = 40
 local HEADER_RIGHT_X = 144
 local HEADER_NAME_X = 48
 local HEADER_NAME_WIDTH = HEADER_RIGHT_X - HEADER_NAME_X
+
+-- Knock the border line out from under a label.
+--
+-- Glyphs are drawn as a mask -- Font.draw paints them in whatever colour is
+-- set, which is how black text lands on the box's white fill -- so a label
+-- drawn straight onto a border would have the line running through the
+-- letters. Painting the cells white first leaves the line either side of the
+-- label and nothing behind it.
+local function clearBorderRun(x, y, width)
+  if width <= 0 then return end
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.rectangle("fill", x, y, width, 8)
+end
+
+-- Centre a label between a box's corner columns, on the 8px column grid the
+-- rest of the box sits on.
+local function borderLabelX(Font, text, tx, tw)
+  local slack = math.max(0, (tw - 2) * 8 - Font.width(text))
+  return (tx + 1) * 8 + math.floor(slack / 16) * 8
+end
+
+-- Label a box on its top border row: knock out the line, then draw.
+local function drawBorderLabel(Font, text, tx, ty, tw)
+  local x = borderLabelX(Font, text, tx, tw)
+  clearBorderRun(x, ty * 8, Font.width(text))
+  love.graphics.setColor(0, 0, 0, 1)
+  Font.draw(text, x, ty * 8)
+  return x
+end
 
 -- Angle brackets are not glyphs. Gen 1 text encodes control tokens as
 -- <PK>, <PLAYER>, <LINE> and the like, and charmap.asm has no '<' or '>' of
@@ -116,12 +150,18 @@ local function drawPocketHeader(list)
   local Font = require("src.render.Font")
   local Theme = require("src.ui.Theme")
   local label = fitLabel(Font, pocket.label, HEADER_NAME_WIDTH)
-
-  -- drawItemBox leaves the colour white; text in this box is black.
-  love.graphics.setColor(0, 0, 0, 1)
-  -- Centre on the 8px column grid the rest of the box sits on.
+  -- Centre the name between the arrows, which keep their own columns on every
+  -- pocket so the keys that change pocket never move.
   local slack = math.max(0, HEADER_NAME_WIDTH - Font.width(label))
-  Font.draw(label, HEADER_NAME_X + math.floor(slack / 16) * 8, HEADER_Y)
+  local nameX = HEADER_NAME_X + math.floor(slack / 16) * 8
+
+  -- One run per glyph group, so the border survives in the gaps between them.
+  clearBorderRun(HEADER_LEFT_X, HEADER_Y, 8)
+  clearBorderRun(nameX, HEADER_Y, Font.width(label))
+  clearBorderRun(HEADER_RIGHT_X, HEADER_Y, 8)
+
+  love.graphics.setColor(0, 0, 0, 1)
+  Font.draw(label, nameX, HEADER_Y)
   drawMirroredCode(Font, Theme.cursor, HEADER_LEFT_X, HEADER_Y)
   Font.drawCode(Theme.cursor, HEADER_RIGHT_X, HEADER_Y)
   love.graphics.setColor(1, 1, 1, 1)
@@ -129,28 +169,16 @@ end
 
 -- Money.
 --
--- 1.1.1 put the money line and the control hints in the standard bottom text
--- box, a full-width white bar under the item window. It read as a second
--- screen rather than as part of the Bag, and most of what it carried was a
--- legend for two buttons -- so the hints are gone and the amount is all that
--- is left.
+-- On the item window's bottom border, right-aligned, the same way the pocket
+-- name sits on the top one. 1.2.0 gave it a little window of its own hanging
+-- under that corner; on the border there is no second frame at all, and the
+-- amount lands exactly where the bottom-right of the item window is.
 --
--- It cannot go inside the item window: LIST_MENU_BOX has nine interior rows
--- and the Bag spends every one of them, on the pocket header plus four items
--- drawn name-over-quantity. So it goes in a small window of its own tucked
--- under the window's bottom-right corner, sized to the amount so it is never
--- wider than the digits it holds.
---
--- LIST_MENU_BOX ends on tile row 12, and this one starts on 13 rather than
--- sharing that row the way the full-width text box did. Sharing puts two
--- frames on one tile: the item window's bottom-right corner is tile 19,12,
--- and a box that also owns that tile draws its own top-right corner there,
--- leaving the item window's corner open. Starting a row lower, the two
--- borders meet without either being redrawn.
-local MONEY_BOX_TY = 13
-local MONEY_BOX_TH = 3
-local MONEY_BOX_RIGHT_TX = 19
-local MONEY_TEXT_Y = 112
+-- LIST_MENU_BOX ends on tile row 12, so that border is the row at y = 96, and
+-- its last column before the corner ends at x = 152 -- the column the Right
+-- arrow occupies on the top border.
+local MONEY_Y = 96
+local MONEY_RIGHT_X = 152
 
 local function moneyText(game)
   local amount = math.floor(tonumber(game and game.save and game.save.money) or 0)
@@ -161,15 +189,11 @@ local function drawBagMoney(list)
   local text = list.footer
   if type(text) ~= "string" or text == "" then return end
   local Font = require("src.render.Font")
-  -- Whole tiles: a font mod's glyphs may not be exactly 8px wide.
-  local cols = math.ceil(Font.width(text) / 8)
-  local tw = math.max(3, math.min(20, cols + 2))
-  local tx = math.max(0, MONEY_BOX_RIGHT_TX + 1 - tw)
-
-  love.graphics.setColor(1, 1, 1, 1)
-  Font.drawBox(tx, MONEY_BOX_TY, tw, MONEY_BOX_TH)
+  -- Never past the corner at the other end, however wide the glyphs are.
+  local x = math.max(HEADER_LEFT_X, MONEY_RIGHT_X - Font.width(text))
+  clearBorderRun(x, MONEY_Y, MONEY_RIGHT_X - x)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(text, (tx + 1) * 8, MONEY_TEXT_Y)
+  Font.draw(text, x, MONEY_Y)
   love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -201,8 +225,8 @@ local WINDOW_INNER_W = 144
 local POPUP_MAX_ROWS = 9
 local POPUP_MIN_INNER_TILES = 8
 
--- Frame (2) + the title row + the blank row under it.
-local POPUP_CHROME_TILES = 4
+-- The frame, and nothing else: the title is on the frame's own top row.
+local POPUP_CHROME_TILES = 2
 
 local function popupVisibleRows(list)
   return math.max(1, math.min(#(list.items or {}), POPUP_MAX_ROWS))
@@ -253,9 +277,10 @@ local function drawPopupMenu(list)
   love.graphics.setColor(0, 0, 0, 1)
 
   local x = (geom.tx + 1) * 8
+  drawBorderLabel(Font, fitLabel(Font, tostring(list.title or ""), geom.titleWidth),
+    geom.tx, geom.ty, geom.tw)
+
   local y = (geom.ty + 1) * 8
-  Font.draw(fitLabel(Font, tostring(list.title or ""), geom.titleWidth), x, y)
-  y = y + 16
   for row = 1, geom.visible do
     local item = items[scroll + row]
     if item then
@@ -280,10 +305,22 @@ local function asPopupMenu(list)
   return list
 end
 
+-- RESULTS only exists while a search is loaded into it. Everything else is
+-- always in the ring.
+local function pocketVisible(state, pocket)
+  if not pocket then return false end
+  if pocket.transient then return state ~= nil and state.results ~= nil end
+  return true
+end
+
 local function rememberPocket(state)
   if not state or not state.mod or not state.mod.save then return end
   local pocket = POCKETS[state.pocket]
-  if pocket then state.mod.save:set("last_pocket", pocket.id) end
+  -- A transient pocket is not somewhere to reopen the Bag on: it is empty by
+  -- the time the Bag opens again, so LAST USED keeps the pocket before it.
+  if pocket and not pocket.transient then
+    state.mod.save:set("last_pocket", pocket.id)
+  end
 end
 
 local MEDICINE = {
@@ -706,7 +743,11 @@ end
 local function refreshPocket(list, preserveId)
   local state = list.modernBag
   local pocket = POCKETS[state.pocket]
-  local rows = itemRows(list.game, pocket.id, state)
+  -- The results page is rebuilt from the search that filled it rather than
+  -- from a snapshot, so its counts follow the Bag as items are used up.
+  local rows = pocket.transient
+    and state.results and state.results.build(list.game, state)
+    or itemRows(list.game, pocket.id, state)
   list.items = rows
   -- Not drawn by the engine for an item-box list (see the pocket header
   -- above), but Gen1 Modern UI and the compatibility contract read it.
@@ -716,14 +757,15 @@ local function refreshPocket(list, preserveId)
   -- Gen1 Modern UI, which puts a touch button on each of them; nothing is
   -- spelled out on the Bag itself any more.
   state.startActionLabel = "TOOLS"
-  if pocket.id == "machines" then
+  if pocket.id == "machines" or (pocket.transient and state.results
+      and state.results.machines) then
     state.selectActionLabel = "FILTER"
     state.machineSortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
   else
     state.selectActionLabel = "SEARCH"
     state.machineSortLabel = nil
   end
-  -- The whole footer is now the amount in the corner window.
+  -- The whole footer is now the amount on the window's bottom border.
   list.footer = moneyText(list.game)
   restoreCursor(list, rows, preserveId)
 
@@ -743,8 +785,27 @@ local function switchPocket(list, delta)
   local state = list.modernBag
   state.swapId = nil
   list.hollowIndex = nil
-  state.pocket = ((state.pocket - 1 + delta) % #POCKETS) + 1
+  local index = state.pocket
+  for _ = 1, #POCKETS do
+    index = ((index - 1 + delta) % #POCKETS) + 1
+    if pocketVisible(state, POCKETS[index]) then break end
+  end
+  state.pocket = index
   rememberPocket(state)
+  refreshPocket(list)
+end
+
+-- Load a search into the results page and put the Bag on it.
+local function showResults(list, results)
+  local state = list.modernBag
+  if not state then return end
+  saveCursor(list)
+  state.swapId = nil
+  list.hollowIndex = nil
+  state.results = results
+  -- A fresh search starts at the top rather than where the last one was left.
+  state.cursors.results = { index = 1, scroll = 0 }
+  state.pocket = pocketIndexById("results")
   refreshPocket(list)
 end
 
@@ -793,10 +854,10 @@ local SEARCH_GRID = {
 -- out on the same 16px pitch as the letters, so the four keys were drawn on
 -- top of one another and read as "DECLBOEXIT".
 --
--- The screen is now one framed window with everything on the 8px grid. The
--- letters keep a cell per key, the cursor in the column to the left of the
--- glyph, and the action row is measured and centred so no two words can share
--- a column whatever the font.
+-- The screen is now one framed window with everything on the 8px grid. Its
+-- title sits on the window's top border, the letters keep a cell per key with
+-- the cursor in the column to the left of the glyph, and the action row is
+-- measured and centred so no two words can share a column whatever the font.
 local KEYBOARD_LEFT_X = WINDOW_LEFT_X
 local KEYBOARD_INNER_W = WINDOW_INNER_W
 local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
@@ -843,6 +904,8 @@ local function drawSearchKeyboard(screen, headerLines)
   local Theme = require("src.ui.Theme")
   love.graphics.setColor(1, 1, 1, 1)
   Font.drawBox(WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw, WINDOW_BOX.th)
+  drawBorderLabel(Font, tostring(screen.title or ""),
+    WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw)
   love.graphics.setColor(0, 0, 0, 1)
   local y = KEYBOARD_HEADER_Y
   for _, line in ipairs(headerLines) do
@@ -895,27 +958,20 @@ local function searchSound(game, name)
   pcall(function() require("src.core.Sound").play(game.data, name) end)
 end
 
+-- GO does not open a page of its own. The matches are loaded into the Bag's
+-- results page and the Bag is put on it, so they are read where every other
+-- item is read -- in the item window, with the pocket header, the counts and
+-- the markers -- instead of on an undecorated full-screen list.
 function QuickSearch:openResults()
   syncSearchQuery(self)
-  local ListMenu = require("src.ui.ListMenu")
-  local rows = searchRows(self.game, self.query, self.bagList.modernBag)
-  local title = self.query == "" and "ALL ITEMS"
-                or ("SEARCH " .. self.query)
-  local search = self
-  self.game.stack:push(ListMenu.new(self.game, title, rows, {
-    onChoose = function(item, resultList)
-      resultList:close()
-      search:close()
-      local bag = search.bagList
-      if not bag or not bag.modernBag then return end
-      saveCursor(bag)
-      bag.modernBag.swapId = nil
-      bag.hollowIndex = nil
-      bag.modernBag.pocket = item.modernPocket or 1
-      rememberPocket(bag.modernBag)
-      refreshPocket(bag, item.value)
-    end,
-  }))
+  local bag = self.bagList
+  local query = self.query
+  self:close()
+  if not bag or not bag.modernBag then return end
+  showResults(bag, {
+    query = query,
+    build = function(game, state) return searchRows(game, query, state) end,
+  })
 end
 
 function QuickSearch:activateCurrentKey()
@@ -985,7 +1041,6 @@ end
 
 function QuickSearch:draw()
   drawSearchKeyboard(self, {
-    self.title,
     -- "FIND: " plus the twelve glyphs the query is capped at is eighteen.
     "FIND: " .. (self.query == "" and "ALL" or self.query),
     "MATCHES: " .. tostring(self:matchCount()),
@@ -1046,16 +1101,15 @@ end
 -- no move data also escaped through an early return that never put the draw
 -- colour back, leaving black set for whatever drew next.
 --
--- It is the same screen-filling window the search keyboard uses, with the
--- sixteen interior rows spent: the title, the machine and its move, the five
--- stats, the effect over three wrapped lines, and the way out -- each block
--- separated by a blank row.
-local INFO_TITLE_Y = WINDOW_TOP_Y             --  8
-local INFO_MOVE_Y = WINDOW_TOP_Y + 16         -- 24
-local INFO_STATS_Y = WINDOW_TOP_Y + 32        -- 40
-local INFO_EFFECT_LABEL_Y = WINDOW_TOP_Y + 80 -- 88
-local INFO_EFFECT_Y = WINDOW_TOP_Y + 88       -- 96
-local INFO_EFFECT_LINES = 3
+-- It is the same screen-filling window the search keyboard uses, titled on
+-- its top border, with the sixteen interior rows spent on the machine and its
+-- move, the five stats, the effect over four wrapped lines and the way out --
+-- each block separated by a blank row.
+local INFO_MOVE_Y = WINDOW_TOP_Y              --   8
+local INFO_STATS_Y = WINDOW_TOP_Y + 16        --  24
+local INFO_EFFECT_LABEL_Y = WINDOW_TOP_Y + 64 --  72
+local INFO_EFFECT_Y = WINDOW_TOP_Y + 72       --  80
+local INFO_EFFECT_LINES = 4
 local INFO_EFFECT_COLS = 18
 local INFO_BACK_HINT = "Y/I OR A/B BACK"
 
@@ -1064,8 +1118,9 @@ function MoveInfoScreen:draw()
   local info = self.info
   love.graphics.setColor(1, 1, 1, 1)
   Font.drawBox(WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw, WINDOW_BOX.th)
+  drawBorderLabel(Font, "MOVE INFORMATION",
+    WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw("MOVE INFORMATION", WINDOW_LEFT_X, INFO_TITLE_Y)
 
   if info then
     -- Four for the code, two for the gap, twelve for the longest Gen 1 move
@@ -1193,7 +1248,6 @@ end
 
 function MachineNameSearch:draw()
   drawSearchKeyboard(self, {
-    self.title,
     "FIND: " .. (self.query == "" and "ALL" or self.query),
   })
 end
@@ -1232,20 +1286,6 @@ local function machineTypeRows(game, state)
   local rows = { { label = "ANY TYPE", value = "ANY" } }
   for _, name in ipairs(names) do rows[#rows + 1] = { label = name, value = name } end
   return rows
-end
-
-local function decorateMachineResultList(list)
-  local baseUpdate = list.update
-  function list:update(dt)
-    if self.game.input:wasPressed(INFO_ACTION) then
-      local item = self.items and self.items[self.index or 1]
-      if item then openMoveInfo(self.game, item.value) end
-      return
-    end
-    baseUpdate(self, dt)
-  end
-  list.footer = "Y/I MOVE INFO"
-  return list
 end
 
 local function updateMachineHub(hub, bagList)
@@ -1320,16 +1360,11 @@ local function openMachineSearch(bagList)
           end,
         })))
       elseif choice.value == "results" then
-        local rows = machineFilteredRows(bagList.game, state)
-        local resultList
-        resultList = ListMenu.new(bagList.game, "TM HM RESULTS", rows, {
-          onChoose = function(item, current)
-            current:close()
-            hub:close()
-            refreshPocket(bagList, item.value)
-          end,
+        hub:close()
+        showResults(bagList, {
+          machines = true,
+          build = function(game, current) return machineFilteredRows(game, current) end,
         })
-        bagList.game.stack:push(decorateMachineResultList(resultList))
       elseif choice.value == "reset" then
         state.machineFilters = { query = "", type = "ANY", damageClass = "ANY" }
         setMachineSort(state, "NUMBER")
@@ -1493,10 +1528,17 @@ local function decorateBag(game, opts, list, mod)
     refreshPocket(self, current)
     local input = self.game.input
     local pocket = POCKETS[state.pocket]
-    if pocket and pocket.id == "machines" and input:wasPressed(INFO_ACTION) then
-      openMoveInfo(self.game, selectedId(self))
-      return
-    elseif input:wasPressed("select") then
+    if input:wasPressed(INFO_ACTION) then
+      -- Machine data, not the pocket, is what decides this: a TM reached
+      -- through FAVORITES or the results page answers Y/I the same way it
+      -- does in TM/HM.
+      local id = selectedId(self)
+      if id and machineInfo(self.game, id) then
+        openMoveInfo(self.game, id)
+        return
+      end
+    end
+    if input:wasPressed("select") then
       openBagSearch(self)
       return
     elseif input:wasPressed("start") then
@@ -1852,10 +1894,14 @@ return function(mod)
     return loadPreferenceState(mod).pinnedSet[id] ~= nil
   end
 
+  -- The pockets an item can live in. The results page is not one of them:
+  -- nothing is filed there, a search puts things there for one Bag session.
   mod.exports.pockets = function()
     local out = {}
-    for i, pocket in ipairs(POCKETS) do
-      out[i] = { id = pocket.id, label = pocket.label }
+    for _, pocket in ipairs(POCKETS) do
+      if not pocket.transient then
+        out[#out + 1] = { id = pocket.id, label = pocket.label }
+      end
     end
     return out
   end
