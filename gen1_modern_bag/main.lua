@@ -10,13 +10,12 @@ local SEARCH_QUERY_LIMIT = 12
 
 local QUICK_SEARCH_SCREEN_ID = "ModernBagNicknameSearch"
 local MOVE_INFO_SCREEN_ID = "ModernBagMoveInfo"
-local MACHINE_NAME_SEARCH_SCREEN_ID = "ModernBagNicknameMachineSearch"
 
 local POCKETS = {
   { id = "favorites", label = "FAVORITES", virtual = true },
   { id = "medicine", label = "MEDICINE" },
   { id = "balls", label = "BALLS" },
-  { id = "machines", label = "TM HM" },
+  { id = "machines", label = "TM/HM" },
   { id = "battle", label = "BATTLE" },
   { id = "key", label = "KEY ITEMS" },
   { id = "other", label = "OTHER" },
@@ -352,6 +351,86 @@ local function orderIndex(order)
   return out
 end
 
+-- Opening a Menu.
+--
+-- The title is not handed to Menu. Menu draws its own at the border tile's own
+-- y and knocks out exactly its width, which puts ink on the frame's outer
+-- white margin and ends the rule flush against the first and last letter. It
+-- is drawn here instead, through the same drawBorderLabel every other window
+-- title in this mod goes through: a pixel lower, with a tile of clearance
+-- knocked out at each end. Only `draw` is wrapped, so the frame, the rows, the
+-- cursor and the more-arrow all stay Menu's.
+--
+-- Menu grows tw to the widest label + 3 and never accounts for the title, so
+-- the width still has to be asked for: the title plus its two clearance tiles
+-- has to fit between the corners, which is tw - 4.
+local MENU_LABEL_MARGIN = 3
+local MENU_TITLE_MARGIN = 4
+
+-- Four rows of options, opened clear of the pocket header on the item
+-- window's top border. Menu works its own height out from the rows.
+local ITEM_TOOLS_TY = 6
+
+local function menuTiles(Font, text)
+  return math.ceil(Font.width(text) / 8)
+end
+
+local function menuWidth(Font, title, items)
+  local widest = 0
+  for _, item in ipairs(items) do
+    local tiles = menuTiles(Font, tostring(item.label or ""))
+    if tiles > widest then widest = tiles end
+  end
+  local forTitle = title and (menuTiles(Font, title) + MENU_TITLE_MARGIN) or 0
+  return math.min(SCREEN_TILES_W,
+    math.max(widest + MENU_LABEL_MARGIN, forTitle))
+end
+
+-- Labels are held to the width that was asked for: Menu sizes itself from the
+-- widest one, so a long label would otherwise grow the menu off the screen.
+local function fitMenuLabels(Font, items, tw)
+  local budget = (tw - MENU_LABEL_MARGIN) * 8
+  for _, item in ipairs(items) do
+    item.label = fitLabel(Font, tostring(item.label or ""), budget)
+  end
+end
+
+-- A title is optional: a menu whose rows say what it is does not need one.
+local function labelMenuBorder(menu, title, tx, ty, tw)
+  local baseDraw = menu.draw
+  if type(baseDraw) ~= "function" then return menu end
+  function menu:draw(...)
+    local result = baseDraw(self, ...)
+    local Font = require("src.render.Font")
+    drawBorderLabel(Font, fitLabel(Font, title, (tw - 4) * 8), tx, ty, tw)
+    love.graphics.setColor(1, 1, 1, 1)
+    return result
+  end
+  return menu
+end
+
+local function openMenu(game, title, items, opts)
+  opts = opts or {}
+  local Font = require("src.render.Font")
+  local Menu = require("src.ui.Menu")
+  local tw = opts.tw or menuWidth(Font, title, items)
+  local tx = SCREEN_TILES_W - tw   -- against the right edge, as Gen 1 does
+  local ty = opts.ty or 0
+  fitMenuLabels(Font, items, tw)
+  local menu = Menu.new(game, items, {
+    tx = tx,
+    ty = ty,
+    tw = tw,
+    maxVisible = opts.maxVisible,
+    onCancel = opts.onCancel,
+  })
+  if title and title ~= "" then
+    labelMenuBorder(menu, title, tx, ty, tw)
+  end
+  game.stack:push(menu)
+  return menu
+end
+
 local MACHINE_SORT_VALUES = {
   NUMBER = true, NAME = true, POWER_DESC = true, POWER_ASC = true,
 }
@@ -479,7 +558,12 @@ local function machineInfo(game, id, def)
     accuracy = accuracy,
     pp = pp,
     effect = readableEffect(move and move.effect),
-    searchKey = normalizedSearch(code .. " " .. moveName .. " " .. tostring(moveId or "") .. " " .. tostring(id)),
+    -- Type and damage class are in here so FIRE and SPECIAL are things the
+    -- search box can find, rather than filters behind a menu of their own.
+    searchKey = normalizedSearch(table.concat({
+      code, moveName, tostring(moveId or ""), tostring(id),
+      displayType(game, typeId), damageClass,
+    }, " ")),
   }
 end
 
@@ -514,6 +598,13 @@ local function machineSortLess(a, b, mode)
   end
   return ma.numberKey < mb.numberKey
 end
+
+-- Shown on the search screen and in its sort picker. NAME is the displayed
+-- name for a plain item and the move name for a machine.
+local MACHINE_SORT_LABELS = {
+  NUMBER = "NUMBER", NAME = "NAME",
+  POWER_DESC = "POWER HIGH", POWER_ASC = "POWER LOW",
+}
 
 local function setMachineSort(state, mode)
   mode = upper(mode)
@@ -693,18 +784,13 @@ local function refreshPocket(list, preserveId)
   -- above), but Gen1 Modern UI and the compatibility contract read it.
   list.title = pocket.label
   -- START opens the item tools on every pocket; SELECT opens that pocket's
-  -- search, which for TM/HM is the filter hub. The labels are published for
+  -- search -- the same one on every pocket now. The labels are published for
   -- Gen1 Modern UI, which puts a touch button on each of them; nothing is
   -- spelled out on the Bag itself any more.
   state.startActionLabel = "TOOLS"
-  if pocket.id == "machines" or (pocket.transient and state.results
-      and state.results.machines) then
-    state.selectActionLabel = "FILTER"
-    state.machineSortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
-  else
-    state.selectActionLabel = "SEARCH"
-    state.machineSortLabel = nil
-  end
+  state.selectActionLabel = "SEARCH"
+  state.machineSortLabel = MACHINE_SORT_LABELS[state.machineSort]
+    or MACHINE_SORT_LABELS.NAME
   -- The whole footer is now the amount on the window's bottom border.
   list.footer = moneyText(list.game)
   restoreCursor(list, rows, preserveId)
@@ -749,6 +835,21 @@ local function showResults(list, results)
   refreshPocket(list)
 end
 
+-- SORT orders the whole result list. NAME goes by displayed name; the machine
+-- modes group the machines first, in that order, and leave everything else
+-- after them by name -- a POTION has no machine number and no base power.
+local function sortSearchRows(rows, state)
+  local mode = state and state.machineSort or "NAME"
+  table.sort(rows, function(a, b)
+    if mode ~= "NAME" then
+      local am, bm = a.modernMachine ~= nil, b.modernMachine ~= nil
+      if am ~= bm then return am end
+      if am and bm then return machineSortLess(a, b, mode) end
+    end
+    return a.modernSort < b.modernSort
+  end)
+end
+
 local function searchRows(game, query, state)
   local Bag = require("src.inventory.Bag")
   local wanted = normalizedSearch(query)
@@ -759,22 +860,31 @@ local function searchRows(game, query, state)
     local count = countOf(game.save, id)
     if count > 0 then
       local def = game.data.items[id]
-      local label = (def and def.name) or id
-      local haystack = normalizedSearch(label .. " " .. id)
+      local name = (def and def.name) or id
+      local markers = (pinnedSet[id] and "P" or "")
+        .. (favoriteSet[id] and "F" or "")
+      local info = def and def.machine and machineInfo(game, id, def) or nil
+      local label = name
+      local haystack = normalizedSearch(name .. " " .. id)
+      if info then
+        -- A machine answers to its code, its move, and that move's type and
+        -- damage class; and it is listed by its move, not by "TM24".
+        haystack = haystack .. info.searchKey
+        label = compactMachineLabel(info, markers)
+      end
       if wanted == "" or haystack:find(wanted, 1, true) then
-        local markers = (pinnedSet[id] and "P" or "")
-          .. (favoriteSet[id] and "F" or "")
         rows[#rows + 1] = {
           label = label,
           right = (markers ~= "" and (markers .. " ") or "") .. "x" .. tostring(count),
           value = id,
           modernPocket = pocketIndexFor(id, def),
-          modernSort = normalizedSearch(label) .. "\0" .. tostring(id),
+          modernMachine = info,
+          modernSort = normalizedSearch(name) .. "\0" .. tostring(id),
         }
       end
     end
   end
-  table.sort(rows, function(a, b) return a.modernSort < b.modernSort end)
+  sortSearchRows(rows, state)
   return rows
 end
 
@@ -784,7 +894,15 @@ local SEARCH_GRID = {
   { "S", "T", "U", "V", "W", "X", "Y", "Z", "0" },
   { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
   { "DEL", "CLR", "GO", "EXIT" },
+  -- Result order. Type and class are typed into the query; this one is a
+  -- choice, so it stays a key, with its current value on the line above.
+  { "SORT" },
 }
+
+-- Rows one to four are one glyph per key. The rest are words, and are measured
+-- and centred instead of laid out on the letters' pitch.
+local KEYBOARD_GLYPH_ROWS = 4
+local SORT_PICKER_TY = 6
 
 -- The search keyboard.
 --
@@ -806,7 +924,7 @@ local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
 local KEYBOARD_HEADER_Y = WINDOW_TOP_Y + 8
 local KEYBOARD_GRID_TOP = 40
 local KEYBOARD_ROW_H = 16
-local KEYBOARD_ACTION_Y = 104
+local KEYBOARD_WORD_ROW_Y = { 104, 112 }
 local KEYBOARD_HINT_Y = 120
 
 -- Eighteen columns each; both keyboards take the same keys.
@@ -816,8 +934,7 @@ local KEYBOARD_HINTS = {
 }
 
 local function drawKeyboardGrid(screen, Font, Theme)
-  local actionRow = #SEARCH_GRID
-  for r = 1, actionRow - 1 do
+  for r = 1, KEYBOARD_GLYPH_ROWS do
     local y = KEYBOARD_GRID_TOP + (r - 1) * KEYBOARD_ROW_H
     for c, key in ipairs(SEARCH_GRID[r]) do
       local x = KEYBOARD_LEFT_X + (c - 1) * KEYBOARD_CELL_W
@@ -826,18 +943,23 @@ local function drawKeyboardGrid(screen, Font, Theme)
     end
   end
 
-  local keys = SEARCH_GRID[actionRow]
-  local run = 0
-  for _, key in ipairs(keys) do run = run + 8 + Font.width(key) end
-  -- Centre the measured run on the 8px column grid the rest of the box uses.
-  local x = KEYBOARD_LEFT_X
-    + math.max(0, math.floor((KEYBOARD_INNER_W - run) / 16)) * 8
-  for c, key in ipairs(keys) do
-    if screen.row == actionRow and c == screen.col then
-      Font.drawCode(Theme.cursor, x, KEYBOARD_ACTION_Y)
+  -- The word rows are measured: laid out on the letters' 16px pitch, DEL and
+  -- CLR and GO and EXIT would be drawn on top of one another.
+  for r = KEYBOARD_GLYPH_ROWS + 1, #SEARCH_GRID do
+    local keys = SEARCH_GRID[r]
+    local y = KEYBOARD_WORD_ROW_Y[r - KEYBOARD_GLYPH_ROWS]
+    if y then
+      local run = 0
+      for _, key in ipairs(keys) do run = run + 8 + Font.width(key) end
+      -- Centre the measured run on the 8px column grid the rest of the box uses.
+      local x = KEYBOARD_LEFT_X
+        + math.max(0, math.floor((KEYBOARD_INNER_W - run) / 16)) * 8
+      for c, key in ipairs(keys) do
+        if r == screen.row and c == screen.col then Font.drawCode(Theme.cursor, x, y) end
+        Font.draw(key, x + 8, y)
+        x = x + 8 + Font.width(key)
+      end
     end
-    Font.draw(key, x + 8, KEYBOARD_ACTION_Y)
-    x = x + 8 + Font.width(key)
   end
 end
 
@@ -930,6 +1052,9 @@ function QuickSearch:activateCurrentKey()
   elseif key == "EXIT" then
     self:close()
     return true
+  elseif key == "SORT" then
+    self:openSortPicker()
+    return true
   elseif #self.glyphs < SEARCH_QUERY_LIMIT then
     self.glyphs[#self.glyphs + 1] = key
   end
@@ -971,10 +1096,37 @@ function QuickSearch:update(dt)
   end
 end
 
+-- The sort applies to the results and is the Bag's own saved preference, so
+-- the picker writes it straight through and re-sorts the open pocket.
+function QuickSearch:openSortPicker()
+  local bag = self.bagList
+  local state = bag and bag.modernBag
+  if not state then return end
+  local rows = {}
+  for _, mode in ipairs({ "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" }) do
+    rows[#rows + 1] = {
+      label = MACHINE_SORT_LABELS[mode],
+      onSelect = function()
+        setMachineSort(state, mode)
+        refreshPocket(bag, selectedId(bag))
+      end,
+    }
+  end
+  openMenu(self.game, "SORT", rows, { ty = SORT_PICKER_TY })
+end
+
+function QuickSearch:sortLabel()
+  local state = self.bagList and self.bagList.modernBag
+  local mode = state and state.machineSort or "NAME"
+  return MACHINE_SORT_LABELS[mode] or MACHINE_SORT_LABELS.NAME
+end
+
 function QuickSearch:draw()
   drawSearchKeyboard(self, {
     -- "FIND: " plus the twelve glyphs the query is capped at is eighteen.
     "FIND: " .. (self.query == "" and "ALL" or self.query),
+    -- "SORT: POWER HIGH" is the widest this gets, at sixteen.
+    "SORT: " .. self:sortLabel(),
   })
 end
 
@@ -1085,171 +1237,6 @@ local function openMoveInfo(game, id)
   game.stack:push(MoveInfoScreen.new(game, id))
 end
 
-local MachineNameSearch = {}
-MachineNameSearch.__index = MachineNameSearch
-MachineNameSearch.isOpaque = true
-
-function MachineNameSearch.new(game, initial, onDone)
-  local glyphs = {}
-  local seed = normalizedSearch(initial or "")
-  for i = 1, math.min(#seed, SEARCH_QUERY_LIMIT) do
-    glyphs[#glyphs + 1] = seed:sub(i, i)
-  end
-  return setmetatable({
-    screenId = MACHINE_NAME_SEARCH_SCREEN_ID,
-    game = game,
-    title = "TM HM MOVE NAME",
-    query = table.concat(glyphs),
-    glyphs = glyphs,
-    maxLen = SEARCH_QUERY_LIMIT,
-    row = 1,
-    col = 1,
-    lower = false,
-    onDone = onDone,
-    modernBagSearchKeyboard = true,
-    modernBagSearchActionLabel = "APPLY",
-    modernBagSearchHint = "A TYPE   B DELETE/EXIT   SELECT CLEAR   START APPLY",
-  }, MachineNameSearch)
-end
-
-function MachineNameSearch:grid()
-  return SEARCH_GRID
-end
-
-function MachineNameSearch:finish()
-  syncSearchQuery(self)
-  self.game.stack:pop()
-  if self.onDone then self.onDone(self.query) end
-end
-
-function MachineNameSearch:activateCurrentKey()
-  local row = SEARCH_GRID[self.row]
-  local key = row and row[self.col]
-  if not key then return false end
-  if key == "DEL" then
-    table.remove(self.glyphs)
-  elseif key == "CLR" then
-    self.glyphs = {}
-  elseif key == "GO" then
-    self:finish()
-    return true
-  elseif key == "EXIT" then
-    self.game.stack:pop()
-    return true
-  elseif #self.glyphs < SEARCH_QUERY_LIMIT then
-    self.glyphs[#self.glyphs + 1] = key
-  end
-  syncSearchQuery(self)
-  return true
-end
-
-function MachineNameSearch:update(dt)
-  local input = self.game.input
-  local row = SEARCH_GRID[self.row]
-  if input:wasPressed("left") then
-    self.col = ((self.col - 2) % #row) + 1
-  elseif input:wasPressed("right") then
-    self.col = (self.col % #row) + 1
-  elseif input:wasPressed("up") then
-    self.row = ((self.row - 2) % #SEARCH_GRID) + 1
-    self.col = math.min(self.col, #SEARCH_GRID[self.row])
-  elseif input:wasPressed("down") then
-    self.row = (self.row % #SEARCH_GRID) + 1
-    self.col = math.min(self.col, #SEARCH_GRID[self.row])
-  elseif input:wasPressed("select") then
-    self.glyphs = {}
-    syncSearchQuery(self)
-    searchSound(self.game, "Swap")
-  elseif input:wasPressed("start") then
-    searchSound(self.game, "Press_AB")
-    self:finish()
-  elseif input:wasPressed("b") then
-    searchSound(self.game, "Press_AB")
-    if #self.glyphs > 0 then
-      table.remove(self.glyphs)
-      syncSearchQuery(self)
-    else
-      self.game.stack:pop()
-    end
-  elseif input:wasPressed("a") then
-    searchSound(self.game, "Press_AB")
-    self:activateCurrentKey()
-  end
-end
-
-function MachineNameSearch:draw()
-  drawSearchKeyboard(self, {
-    "FIND: " .. (self.query == "" and "ALL" or self.query),
-  })
-end
-
-
--- Opening a Menu.
---
--- Menu knocks out exactly the title's width for it, so the rule ends flush
--- against the first and last letter -- the frame appearing to touch them. A
--- space at each end is what buys the clearance, and it is added here at the
--- call site: a title is a catalog key elsewhere in the engine, and padding it
--- inside the string would make the padding part of the key.
---
--- Menu grows tw to the widest label + 3 and never accounts for the title, so
--- the width has to be asked for. The title starts a fixed three tiles in, so
--- the padded title has to stay within tw - 4 or it runs into the top-right
--- corner glyph -- the same defect at the other end.
-local MENU_LABEL_MARGIN = 3
-local MENU_TITLE_MARGIN = 4
-
--- Four rows of options, opened clear of the pocket header on the item
--- window's top border. Menu works its own height out from the rows.
-local ITEM_TOOLS_TY = 6
-
-local function menuTitle(title)
-  return " " .. tostring(title or "") .. " "
-end
-
-local function menuTiles(Font, text)
-  return math.ceil(Font.width(text) / 8)
-end
-
-local function menuWidth(Font, title, items)
-  local widest = 0
-  for _, item in ipairs(items) do
-    local tiles = menuTiles(Font, tostring(item.label or ""))
-    if tiles > widest then widest = tiles end
-  end
-  return math.min(SCREEN_TILES_W, math.max(
-    widest + MENU_LABEL_MARGIN,
-    menuTiles(Font, menuTitle(title)) + MENU_TITLE_MARGIN))
-end
-
--- Labels are held to the width that was asked for: Menu sizes itself from the
--- widest one, so a long label would otherwise grow the menu off the screen.
-local function fitMenuLabels(Font, items, tw)
-  local budget = (tw - MENU_LABEL_MARGIN) * 8
-  for _, item in ipairs(items) do
-    item.label = fitLabel(Font, tostring(item.label or ""), budget)
-  end
-end
-
-local function openMenu(game, title, items, opts)
-  opts = opts or {}
-  local Font = require("src.render.Font")
-  local Menu = require("src.ui.Menu")
-  local tw = opts.tw or menuWidth(Font, title, items)
-  fitMenuLabels(Font, items, tw)
-  local menu = Menu.new(game, items, {
-    -- Against the right edge, the corner Gen 1 opens a menu into.
-    tx = SCREEN_TILES_W - tw,
-    ty = opts.ty or 0,
-    tw = tw,
-    title = menuTitle(title),
-    maxVisible = opts.maxVisible,
-    onCancel = opts.onCancel,
-  })
-  game.stack:push(menu)
-  return menu
-end
-
 local function machineFilters(state)
   if type(state.machineFilters) ~= "table" then
     state.machineFilters = { query = "", type = "ANY", damageClass = "ANY" }
@@ -1270,158 +1257,6 @@ local function machineFilteredRows(game, state)
     end
   end
   return rows
-end
-
-local function machineTypeRows(game, state)
-  local found = {}
-  for _, row in ipairs(itemRows(game, "machines", state)) do
-    if row.modernMachine then found[row.modernMachine.typeLabel] = true end
-  end
-  local names = {}
-  for name in pairs(found) do names[#names + 1] = name end
-  table.sort(names)
-  local rows = { { label = "ANY TYPE", value = "ANY" } }
-  for _, name in ipairs(names) do rows[#rows + 1] = { label = name, value = name } end
-  return rows
-end
-
-local MACHINE_SORT_LABELS = {
-  NUMBER = "NUMBER", NAME = "MOVE NAME",
-  POWER_DESC = "POWER HIGH", POWER_ASC = "POWER LOW",
-}
-
--- The hub is a fixed seven rows whose labels carry the current filters, so
--- they are rewritten in place rather than the menu being rebuilt: Menu sizes
--- itself once, from the rows it was handed.
-local MACHINE_HUB_TW = SCREEN_TILES_W
-local MACHINE_HUB_TY = 1
-local MACHINE_PICKER_TY = 6
-local MACHINE_TYPE_MAX_VISIBLE = 5
-local MACHINE_HUB_LABEL_BUDGET = (MACHINE_HUB_TW - MENU_LABEL_MARGIN) * 8
-
-local function updateMachineHub(hub, bagList)
-  local state = bagList.modernBag
-  local filters = machineFilters(state)
-  local Font = require("src.render.Font")
-  local labels = {
-    "NAME: " .. (filters.query == "" and "ANY" or filters.query),
-    "TYPE: " .. filters.type,
-    "CLASS: " .. filters.damageClass,
-    "SORT: " .. (MACHINE_SORT_LABELS[state.machineSort] or "NUMBER"),
-    "RESULTS: " .. tostring(#machineFilteredRows(bagList.game, state)),
-    "RESET FILTERS",
-    "CANCEL",
-  }
-  for i, label in ipairs(labels) do
-    local row = hub.items and hub.items[i]
-    -- The query can be twelve glyphs, so this is where a row gets too wide.
-    if row then row.label = fitLabel(Font, label, MACHINE_HUB_LABEL_BUDGET) end
-  end
-end
-
-local function openMachineSearch(bagList)
-  local state = bagList.modernBag
-  state.swapId = nil
-  bagList.hollowIndex = nil
-  local game = bagList.game
-  local hub
-
-  -- keepOpen on every row that opens a picker: the hub has to still be there
-  -- when the picker closes, with its labels caught up.
-  local function picker(build)
-    return function()
-      build()
-      updateMachineHub(hub, bagList)
-    end
-  end
-
-  local function choices(values, labelFor, apply)
-    local rows = {}
-    for _, value in ipairs(values) do
-      rows[#rows + 1] = {
-        label = labelFor(value),
-        onSelect = function()
-          apply(value)
-          updateMachineHub(hub, bagList)
-        end,
-      }
-    end
-    return rows
-  end
-
-  local items = {
-    {
-      label = "", keepOpen = true,
-      onSelect = picker(function()
-        local filters = machineFilters(state)
-        game.stack:push(MachineNameSearch.new(game, filters.query, function(query)
-          machineFilters(state).query = query
-          updateMachineHub(hub, bagList)
-        end))
-      end),
-    },
-    {
-      label = "", keepOpen = true,
-      onSelect = picker(function()
-        local values, labels = {}, {}
-        for _, row in ipairs(machineTypeRows(game, state)) do
-          values[#values + 1] = row.value
-          labels[row.value] = row.label
-        end
-        openMenu(game, "MOVE TYPE",
-          choices(values, function(v) return labels[v] end,
-            function(v) machineFilters(state).type = v end),
-          { ty = MACHINE_PICKER_TY, maxVisible = MACHINE_TYPE_MAX_VISIBLE })
-      end),
-    },
-    {
-      label = "", keepOpen = true,
-      onSelect = picker(function()
-        openMenu(game, "DAMAGE CLASS",
-          choices({ "ANY", "PHYSICAL", "SPECIAL", "STATUS" },
-            function(v) return v == "ANY" and "ANY CLASS" or v end,
-            function(v) machineFilters(state).damageClass = v end),
-          { ty = MACHINE_PICKER_TY })
-      end),
-    },
-    {
-      label = "", keepOpen = true,
-      onSelect = picker(function()
-        openMenu(game, "SORT TM HM",
-          choices({ "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" },
-            function(v) return MACHINE_SORT_LABELS[v] end,
-            function(v)
-              setMachineSort(state, v)
-              refreshPocket(bagList, selectedId(bagList))
-            end),
-          { ty = MACHINE_PICKER_TY })
-      end),
-    },
-    {
-      label = "",
-      onSelect = function()
-        showResults(bagList, {
-          machines = true,
-          build = function(g, current) return machineFilteredRows(g, current) end,
-        })
-      end,
-    },
-    {
-      label = "", keepOpen = true,
-      onSelect = function()
-        state.machineFilters = { query = "", type = "ANY", damageClass = "ANY" }
-        setMachineSort(state, "NUMBER")
-        refreshPocket(bagList, selectedId(bagList))
-        updateMachineHub(hub, bagList)
-      end,
-    },
-    { label = "" },
-  }
-
-  hub = openMenu(game, "TM HM SEARCH", items,
-    { tw = MACHINE_HUB_TW, ty = MACHINE_HUB_TY })
-  updateMachineHub(hub, bagList)
-  return hub
 end
 
 local function reorderWithinBag(item, list)
@@ -1472,10 +1307,12 @@ local function openItemTools(item, list)
     pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
   end
 
+  -- No title: four rows that name themselves do not need one.
+  --
   -- Menu closes itself around onSelect unless the row asks to stay open, so
   -- none of these close it by hand. Nothing here depends on which side of
   -- onSelect that happens.
-  openMenu(list.game, "ITEM OPTIONS", {
+  openMenu(list.game, nil, {
     {
       label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE",
       onSelect = function()
@@ -1511,17 +1348,6 @@ local function openBagTools(list)
     reorderWithinBag(item, list)
   else
     openItemTools(item, list)
-  end
-end
-
--- SELECT. Each pocket's search: the TM/HM pocket's is its filter hub.
-local function openBagSearch(list)
-  local state = list.modernBag
-  local pocket = state and POCKETS[state.pocket]
-  if pocket and pocket.id == "machines" then
-    openMachineSearch(list)
-  else
-    openQuickSearch(list)
   end
 end
 
@@ -1589,7 +1415,9 @@ local function decorateBag(game, opts, list, mod)
       end
     end
     if input:wasPressed("select") then
-      openBagSearch(self)
+      -- The same search on every pocket. A machine answers to its move, its
+      -- type and its damage class, so TM/HM needs no search of its own.
+      openQuickSearch(self)
       return
     elseif input:wasPressed("start") then
       openBagTools(self)

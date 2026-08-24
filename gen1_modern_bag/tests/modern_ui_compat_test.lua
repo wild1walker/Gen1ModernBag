@@ -175,7 +175,7 @@ local infoDesc = assert(contract.screens.gen1_modern_bag_move_info,
 assert(contract.screens.gen1_modern_bag_quick_search == nil,
   "Quick Search should use Modern UI's native naming-keyboard presenter")
 assert(contract.screens.gen1_modern_bag_machine_name_search == nil,
-  "TM/HM move-name search should use the native naming-keyboard presenter")
+  "there is no TM/HM move-name search any more: the one keyboard covers it")
 assert(infoDesc.canSuppressNative, "Move Information screen must be suppressible")
 
 local BagMenu = require("src.ui.BagMenu")
@@ -215,7 +215,8 @@ assert(stack:top() ~= quick, "Quick Search did not close on B with empty query")
 bag.modernBag.pocket = 4
 bag:update(0)
 assert(bag.modernBag.startActionLabel == "TOOLS", "TM/HM item tools label missing")
-assert(bag.modernBag.selectActionLabel == "FILTER", "TM/HM filter label missing")
+-- One search on every pocket, so one label for it.
+assert(bag.modernBag.selectActionLabel == "SEARCH", "TM/HM search label missing")
 assert(bag.items[1] and bag.items[1].value == "TM_FLAMETHROWER",
   "TM/HM pocket did not refresh")
 pressed.gen1_modern_bag_move_info = true
@@ -230,27 +231,20 @@ assert(infoModel.rows[2].value == "FIRE", "Move Information type missing")
 assert(infoDesc.actions.back(game, info), "Move Information back failed")
 assert(stack:top() ~= info, "Move Information did not close")
 
--- TM/HM pocket SELECT opens the standard filter hub; NAME then opens the
--- same native naming-keyboard shape, with APPLY as its semantic action.
+-- TM/HM pocket SELECT opens the same grid keyboard as every other pocket.
+-- There is no separate move-name keyboard any more: a machine answers to its
+-- move, that move's type and its damage class from the one search box.
 pressed.select = true
 bag:update(0)
-local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search hub")
-assert(hub.items[1].label:find("NAME:", 1, true), "NAME filter is not first")
-hub:choose(1)
-local nameSearch = assert(stack:top(), "move-name search did not open")
-assert(nameSearch.screenId == "ModernBagNicknameMachineSearch",
-  "move-name search screen id missing")
-assert(type(nameSearch.grid) == "function" and type(nameSearch.glyphs) == "table",
-  "move-name search does not expose naming-keyboard state")
-assert(nameSearch.modernBagSearchActionLabel == "APPLY",
-  "move-name search action label missing")
-pressed.a = true
-nameSearch:update(0)
-assert(nameSearch.query == "A", "move-name selected key was not entered")
-pressed.b = true
-nameSearch:update(0)
-assert(nameSearch.query == "", "move-name B did not delete")
+local machineSearch = assert(stack:top(), "SELECT did not open a search in TM/HM")
+assert(machineSearch.screenId == "ModernBagNicknameSearch",
+  "TM/HM opened its own screen again: " .. tostring(machineSearch.screenId))
+assert(type(machineSearch.grid) == "function" and type(machineSearch.glyphs) == "table",
+  "the search does not expose naming-keyboard state")
+local machineGrid = machineSearch:grid()
+assert(machineGrid[5][3] == "GO", "the action row moved")
+assert(machineGrid[#machineGrid][1] == "SORT", "the sort key is missing")
+machineSearch:close()
 
 assert(mod.exports.ensureModernUiAdapter(), "adapter retry export failed")
 assert(adapterSpec.version == "1.6.0", "adapter retry version mismatch")

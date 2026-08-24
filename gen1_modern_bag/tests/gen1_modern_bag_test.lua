@@ -137,6 +137,9 @@ package.preload["src.ui.Menu"] = function()
       if item.onSelect then item.onSelect() end
       return item
     end
+    -- The widget paints the frame, the rows and the cursor. A title is not
+    -- handed to it any more, so anything drawn here comes from the mod.
+    function self:draw() end
     return self
   end
   return M
@@ -317,10 +320,8 @@ bag.index = 2
 pressed.start = true
 bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
--- Padded, so Menu's exactly-the-title-wide knock-out leaves the rule a tile
--- clear of the letters at each end.
-assert(tools.opts.title == " ITEM OPTIONS ",
-  "wrong ITEM OPTIONS title: " .. tostring(tools.opts.title))
+-- No title on the item tools: four rows that name themselves do not need one.
+assert(tools.opts.title == nil, "the item tools grew a title again")
 assert(tools.items[1].label == "ADD FAVORITE")
 tools:choose(1)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
@@ -486,9 +487,9 @@ pressed.right = true
 ballsOpen:update(0)
 assert(ballsOpen.modernBag.pocket == 4, "right pocket switch failed")
 name = headerPaint(ballsOpen)
-assert(name and name.text == "TM HM",
+assert(name and name.text == "TM/HM",
   "the pocket header did not follow the pocket switch: " .. tostring(name and name.text))
-assert(ballsOpen.title == "TM HM",
+assert(ballsOpen.title == "TM/HM",
   "pocket title did not follow the pocket switch: " .. tostring(ballsOpen.title))
 
 -- The money is the header's twin, on the item window's other border. 1.1.1
@@ -558,7 +559,7 @@ ballsOpen:update(0)
 -- TM/HM tools -- but it is still published for Gen1 Modern UI to present.
 ballsOpen.modernBag.machineSort = "POWER_DESC"
 ballsOpen:update(0)
-assert(ballsOpen.modernBag.machineSortLabel == "POWER DESC",
+assert(ballsOpen.modernBag.machineSortLabel == "POWER HIGH",
   "wrong sort label: " .. tostring(ballsOpen.modernBag.machineSortLabel))
 local sortAmount, sortExtra = moneyPaint(ballsOpen)
 assert(sortAmount and sortAmount.text:find("¥", 1, true) and #sortExtra == 0,
@@ -708,37 +709,86 @@ infoScreen.info = savedInfo
 
 stack:pop()
 
--- SELECT in the TM/HM pocket opens the dedicated filter/sort hub: it is that
--- pocket's search, and SELECT is the search key on every pocket.
+-- SELECT opens the same search on every pocket, TM/HM included: a machine
+-- answers to its move, that move's type and its damage class, so there is no
+-- separate TM/HM search to open.
 pressed.select = true
 bag:update(0)
-local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search title")
-assert(hub.items[1].label:find("NAME:", 1, true), "move-name filter missing")
-assert(hub.items[2].label:find("TYPE:", 1, true), "type filter missing")
-assert(hub.items[3].label:find("CLASS:", 1, true), "damage-class filter missing")
-assert(hub.items[4].label:find("SORT:", 1, true), "power sort missing")
+local machineSearch = assert(stack:top(), "SELECT did not open a search in TM/HM")
+assert(machineSearch.screenId == "ModernBagNicknameSearch",
+  "SELECT opened something other than Quick Search: " .. tostring(machineSearch.screenId))
+machineSearch:close()
+
+-- Those terms are what folded the filters into the query. Each of these used
+-- to be a picker in a filter hub of its own.
+local function searchIds(query)
+  local ids = {}
+  for _, row in ipairs(mod.exports.search(game, query)) do ids[#ids + 1] = row.value end
+  table.sort(ids)
+  return table.concat(ids, ",")
+end
+assert(searchIds("SURF") == "HM_SURF", "a machine is not found by its move name")
+assert(searchIds("HM03") == "HM_SURF", "a machine is not found by its code")
+assert(searchIds("WATER") == "HM_SURF", "a machine is not found by its move's type")
+assert(searchIds("FIRE") == "TM_FLAMETHROWER", "the type term matched the wrong machines")
+assert(searchIds("STATUS") == "TM_SWORDS_DANCE",
+  "a machine is not found by its damage class")
+assert(searchIds("PHYSICAL") == "TM_MEGA_PUNCH", "the damage-class term is wrong")
+-- And a plain item is still found by its own name.
+assert(searchIds("ESCAPE") == "ESCAPE_ROPE", "a plain item is no longer searchable")
+
+-- Results carry the machine's move on the row, not the bare "TM35", and the
+-- machine data that Y/I reads.
+local flame
+for _, row in ipairs(mod.exports.search(game, "FLAME")) do flame = row end
+-- Truncated to the drawable run, the same way the TM/HM pocket does it.
+assert(flame and flame.label:find("TM35", 1, true) and flame.label:find("FLAME", 1, true),
+  "a machine result is not labelled with its code and move: "
+    .. tostring(flame and flame.label))
+assert(flame.modernMachine, "a machine result lost its machine data")
 
 -- Menus this mod opens are src/ui/Menu.lua, the engine's own framed menu
--- widget. It draws the frame, the title on its top border and the cursor, so
--- what a test can check is what it was handed: the geometry asked for, the
--- padding on the title, and the rows.
+-- widget: it draws the frame, the rows, the cursor and the more-arrow. What a
+-- test can check is what it was handed -- the geometry asked for and the rows
+-- -- plus the title, which is drawn by the mod rather than handed over.
 local MENU_LABEL_MARGIN = 3   -- Menu grows tw to the widest label + 3
-local MENU_TITLE_START = 3    -- and starts the title a fixed three tiles in
 
 local function menuTiles(text) return utf8.len(text) or #text end
 
--- Menu knocks out exactly the title's width, so the rule would end flush
--- against the first and last letter. The space at each end is the clearance.
-local function assertPaddedTitle(menu, name)
-  local title = menu.opts.title
-  assert(title, name .. " was opened without a title")
-  assert(title == " " .. name .. " ",
-    ("%s's title is not padded for its border: %q"):format(name, title))
-  -- The title runs from tile tx+3, so it has to end before the far corner.
-  assert(menuTiles(title) <= menu.opts.tw - MENU_TITLE_START - 1,
-    ("%s is %d tiles wide, too narrow for its padded title")
+-- The title is not given to Menu: Menu would draw it at the border tile's own
+-- y and knock out exactly its width, putting ink on the frame's outer margin
+-- and ending the rule flush against the letters. It goes through the mod's own
+-- drawBorderLabel instead -- a pixel lower, a tile of clearance at each end.
+local function assertBorderTitle(menu, name)
+  assert(menu.opts.title == nil,
+    name .. "'s title was handed to Menu, which draws it on the margin")
+  resetPaint()
+  menu:draw()
+  local borderY = menu.opts.ty * 8
+  local title
+  for _, call in ipairs(painted.text) do
+    if call.y == borderY + WINDOW_EDGE then title = call end
+    assert(call.y ~= borderY,
+      ("%q sits on the frame's outer white margin"):format(call.text))
+  end
+  assert(title and title.text == name,
+    ("%s is not titled on its border: %s"):format(name, tostring(title and title.text)))
+  local right = title.x + menuTiles(title.text) * 8
+  assert(clearedAt(title.x - 8, borderY) and clearedAt(right, borderY),
+    name .. "'s title has no clearance from the rule")
+  assert(not clearedAt(menu.opts.tx * 8, borderY)
+    and not clearedAt((menu.opts.tx + menu.opts.tw - 1) * 8, borderY),
+    name .. "'s title rubbed out a corner glyph")
+  assert(menuTiles(title.text) <= menu.opts.tw - 4,
+    ("%s is %d tiles wide, too narrow for its title plus clearance")
       :format(name, menu.opts.tw))
+end
+
+local function assertUntitled(menu, name)
+  assert(menu.opts.title == nil, name .. " was handed a title")
+  resetPaint()
+  menu:draw()
+  assert(#painted.text == 0, name .. " drew a title of its own")
 end
 
 -- And a label wider than the width asked for would grow the menu off the
@@ -754,40 +804,14 @@ local function assertFits(menu, name)
   end
 end
 
-assertPaddedTitle(hub, "TM HM SEARCH")
-assertFits(hub, "TM HM SEARCH")
-assert(#hub.items == 7, "the TM/HM hub is not seven rows")
--- The rows that open a picker have to leave the hub standing under it.
-for i = 1, 4 do
-  assert(hub.items[i].keepOpen, "TM/HM hub row " .. i .. " closes the hub behind its picker")
-end
-assert(not hub.items[5].keepOpen, "the RESULTS row should close the hub")
-assert(hub.items[7].onSelect == nil, "CANCEL should do nothing but close")
-
--- ITEM OPTIONS is the menu whose padded title is wider than any of its option
--- labels, so it is the one that catches a width asked for without counting it.
+-- The item tools carry no title: four rows that name themselves do not need
+-- one.
 pressed.start = true
 bag:update(0)
-local optionsMenu = assert(stack:top(), "START did not open ITEM OPTIONS")
-assertPaddedTitle(optionsMenu, "ITEM OPTIONS")
-assertFits(optionsMenu, "ITEM OPTIONS")
+local optionsMenu = assert(stack:top(), "START did not open the item tools")
+assertUntitled(optionsMenu, "the item tools")
+assertFits(optionsMenu, "the item tools")
 optionsMenu:close()
-
--- Labels too wide for the menu are trimmed by glyphs, not by bytes: a label
--- can carry a multi-byte character -- POKe with the accent, the currency sign
--- -- or a Gen 1 control code, and half of one of those is not a character.
--- The NAME row is the one that grows, because it carries the query.
-local liveFilters = bag.modernBag.machineFilters
-liveFilters.query = ("\u{00e9}"):rep(30)
-hub:choose(2)                       -- opens the TYPE picker, and relabels
-assert(stack:top() ~= hub, "the TYPE picker did not open")
-stack:top():close()
-assert(utf8.len(hub.items[1].label),
-  "a label was trimmed mid-character: " .. hub.items[1].label)
-assertFits(hub, "TM HM SEARCH")
-liveFilters.query = ""
-hub:choose(2)
-stack:top():close()
 
 -- The search keyboard. 1.1.1 drew it as a bare white page and laid the
 -- DEL/CLR/GO/EXIT row out on the same 16px pitch as the single-glyph letters,
@@ -919,7 +943,7 @@ for _ = 1, 7 do
   ringSeen[bag.title] = true
 end
 assert(not ringSeen.RESULTS, "the results page is in the ring before any search")
-assert(ringSeen.MEDICINE and ringSeen["TM HM"] and ringSeen.FAVORITES,
+assert(ringSeen.MEDICINE and ringSeen["TM/HM"] and ringSeen.FAVORITES,
   "stepping over the hidden page skipped a real pocket")
 
 bag.modernBag.pocket = 2
@@ -971,24 +995,84 @@ for _, entry in ipairs(ringPockets) do
   assert(entry.id ~= "results", "the results page leaked into the pocket export")
 end
 
--- The TM/HM filters fill the same page instead of a list of their own.
+-- A machine query fills the same page. This is what the TM/HM filter hub used
+-- to do from a search of its own: typing the move's type is the type filter.
 bag.modernBag.pocket = 4
 bag:update(0)
 pressed.select = true
 bag:update(0)
-local filters = assert(stack:top(), "the TM/HM hub did not open")
-local showRowIndex
-for i, row in ipairs(filters.items) do
-  if row.label:find("RESULTS", 1, true) then showRowIndex = i end
-end
-assert(showRowIndex, "the RESULTS row is missing from the TM/HM hub")
-filters:choose(showRowIndex)
-assert(stack:top() == nil, "the TM/HM filters pushed a page of their own")
-assert(bag.title == "RESULTS", "the TM/HM filters did not fill the results page")
-assert(#bag.items == 4, "wrong TM/HM result count: " .. #bag.items)
+local typeSearch = assert(stack:top(), "SELECT did not open the search in TM/HM")
+typeSearch.glyphs = { "F", "I", "R", "E" }
+pressed.start = true
+typeSearch:update(0)
+assert(stack:top() == nil, "the search pushed a page of its own")
+assert(bag.title == "RESULTS", "a machine query did not fill the results page")
+assert(#bag.items == 1 and bag.items[1].value == "TM_FLAMETHROWER",
+  "the type term did not narrow to fire machines")
 for _, row in ipairs(bag.items) do
-  assert(row.modernMachine, "a TM/HM result lost its machine data")
+  assert(row.modernMachine, "a machine result lost its machine data")
 end
+
+-- SORT is the one filter that stays a choice, so it is a key on the keyboard
+-- and its value is shown above the grid. It writes the Bag's saved preference
+-- and re-sorts the open pocket.
+pressed.select = true
+bag:update(0)
+local sortSearch = assert(stack:top(), "SELECT did not reopen the search")
+local sortRow = #sortSearch:grid()
+assert(sortSearch:grid()[sortRow][1] == "SORT", "the keyboard has no SORT key")
+sortSearch.row, sortSearch.col = sortRow, 1
+pressed.a = true
+sortSearch:update(0)
+local sortPicker = assert(stack:top(), "the SORT key opened no picker")
+assert(sortPicker ~= sortSearch, "the SORT key did not open a picker")
+local powerRow
+for i, row in ipairs(sortPicker.items) do
+  if row.label == "POWER HIGH" then powerRow = i end
+end
+assert(powerRow, "the sort picker has no POWER HIGH")
+sortPicker:choose(powerRow)
+assert(saved.machine_sort == "POWER_DESC", "the sort was not persisted")
+assert(sortSearch:sortLabel() == "POWER HIGH",
+  "the keyboard does not show the sort it just set")
+sortSearch:close()
+
+-- And the results follow it: the machine modes group the machines first, in
+-- that order, and leave everything else after them by name.
+bag.modernBag.pocket = 2
+bag:update(0)
+pressed.select = true
+bag:update(0)
+local allSearch = assert(stack:top(), "SELECT did not open the search")
+allSearch.glyphs = {}
+pressed.start = true
+allSearch:update(0)
+assert(bag.title == "RESULTS", "an empty query did not fill the results page")
+local machinesFirst, sawPlain = true, false
+for _, row in ipairs(bag.items) do
+  if row.modernMachine then
+    if sawPlain then machinesFirst = false end
+  else
+    sawPlain = true
+  end
+end
+assert(machinesFirst, "a machine sort did not group the machines first")
+-- And the machines are in that order among themselves, not merely grouped:
+-- by name they would run 95, 80, 0, 95, which is why the first row's power
+-- alone proves nothing.
+local previousPower
+for _, row in ipairs(bag.items) do
+  local info = row.modernMachine
+  if info then
+    assert(previousPower == nil or info.power <= previousPower,
+      ("POWER HIGH left %s at %d after a weaker move"):format(row.label, info.power))
+    previousPower = info.power
+  end
+end
+assert(previousPower, "no machines came back for an empty query")
+-- Back to the default for anything after this.
+bag.modernBag.machineSort = "NAME"
+bag:update(0)
 
 -- Y/I reads a machine wherever it is reached, not only in the TM/HM pocket,
 -- so it still answers on the results page.
