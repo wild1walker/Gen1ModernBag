@@ -369,7 +369,8 @@ local MENU_TITLE_MARGIN = 4
 
 -- Four rows of options, opened clear of the pocket header on the item
 -- window's top border. Menu works its own height out from the rows.
-local ITEM_TOOLS_TY = 6
+local ITEM_TOOLS_TY = 5
+local SORT_PICKER_TY = 6
 
 local function menuTiles(Font, text)
   return math.ceil(Font.width(text) / 8)
@@ -835,6 +836,149 @@ local function showResults(list, results)
   refreshPocket(list)
 end
 
+-- Sorting, from the search keyboard's SORT key and from the item tools.
+local SORT_MODES = { "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" }
+
+local function openSortMenu(bagList)
+  local state = bagList and bagList.modernBag
+  if not state then return end
+  local rows = {}
+  for _, mode in ipairs(SORT_MODES) do
+    rows[#rows + 1] = {
+      label = MACHINE_SORT_LABELS[mode],
+      onSelect = function()
+        setMachineSort(state, mode)
+        refreshPocket(bagList, selectedId(bagList))
+      end,
+    }
+  end
+  openMenu(bagList.game, "SORT", rows, { ty = SORT_PICKER_TY })
+end
+
+-- Moving an item.
+--
+-- Picking one up carries it: Up and Down walk it through the pocket a row at a
+-- time and the list reorders under it as it goes, so the move is what you see
+-- rather than something that happens when you finally commit. A places it, B
+-- puts it back where it started.
+--
+-- Up to 1.5.0 this was a two-ended swap -- pick one item, move the cursor,
+-- press START on a second, and the two traded places with nothing on screen
+-- between. START also opened the item tools, so the key that started a move
+-- was the key that ended it.
+local function carriedRow(list)
+  local id = list.modernBag and list.modernBag.swapId
+  if not id then return nil end
+  for i, row in ipairs(list.items or {}) do
+    if row.value == id then return i end
+  end
+  return nil
+end
+
+local function beginMove(item, list)
+  local state = list.modernBag
+  if not item or not state then return end
+  state.swapId = item.value
+  list.hollowIndex = list.index
+  -- Where it came from, so B can put it back.
+  state.swapRow = carriedRow(list)
+end
+
+local function endMove(list, sound)
+  local state = list.modernBag
+  state.swapId = nil
+  state.swapRow = nil
+  list.hollowIndex = nil
+  if sound then
+    pcall(function() require("src.core.Sound").play(list.game.data, sound) end)
+  end
+  refreshPocket(list, selectedId(list))
+end
+
+-- One row, by trading places with the neighbour it is passing. Repeated, that
+-- is an insertion: everything the carried item walks past shifts up one.
+local function carryStep(list, delta)
+  local state = list.modernBag
+  local rows = list.items or {}
+  local from = carriedRow(list)
+  if not from then return false end
+  local to = from + delta
+  if to < 1 or to > #rows then return false end
+
+  local pocket = POCKETS[state.pocket]
+  local order
+  if pocket and pocket.id == "favorites" then
+    order = state.favoriteOrder
+  else
+    local Bag = require("src.inventory.Bag")
+    order = Bag.order(list.game.save)
+  end
+  local a = positionOf(order, state.swapId)
+  local b = positionOf(order, rows[to].value)
+  if not a or not b then return false end
+  local function trade()
+    order[a], order[b] = order[b], order[a]
+    if pocket and pocket.id == "favorites" then
+      rebuildPreferenceIndexes(state)
+      persistPreferences(state)
+    end
+    refreshPocket(list, state.swapId)
+  end
+
+  trade()
+  -- The row it ended on is only where it was asked to go if the pocket's own
+  -- order decides it: the TM/HM pocket sorts by SORT and the results page by
+  -- the search, and pinned items sort above unpinned ones. Where the step did
+  -- not land, put the order back rather than leave it quietly rearranged
+  -- underneath a list that will never show it.
+  if carriedRow(list) == from then
+    trade()
+    return false
+  end
+  return true
+end
+
+local function cancelMove(list)
+  local state = list.modernBag
+  local origin = state.swapRow
+  local rows = #(list.items or {})
+  -- Walk it back to where it was picked up, bounded so a pocket that will not
+  -- reorder cannot spin here.
+  for _ = 1, rows do
+    local at = carriedRow(list)
+    if not at or not origin or at == origin then break end
+    if not carryStep(list, origin < at and -1 or 1) then break end
+  end
+  endMove(list)
+end
+
+-- The item being carried takes the hollow cursor, which is the whole of the
+-- "you are holding this" state. 1.5.0 set list.hollowIndex for it, which the
+-- engine's item-box path does not read, so nothing ever looked picked up.
+--
+-- LIST_MENU_BOX draws the selection cursor in the column at x = 40 and the
+-- first item name at y = 32, two rows to an item.
+local ITEM_CURSOR_X = 40
+local ITEM_ROW_TOP_Y = 32
+local ITEM_ROW_H = 16
+
+local function drawCarriedCursor(list)
+  local row = carriedRow(list)
+  if not row then return end
+  local visible = row - (list.scroll or 0)
+  if visible < 1 or visible > (list.rows or 4) then return end
+  local Font = require("src.render.Font")
+  local Theme = require("src.ui.Theme")
+  local y = ITEM_ROW_TOP_Y + (visible - 1) * ITEM_ROW_H
+  -- The engine has already drawn its solid cursor on this row; white it out,
+  -- or the hollow one lands on top of it and neither reads.
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.rectangle("fill", ITEM_CURSOR_X, y, 8, 8)
+  love.graphics.setColor(0, 0, 0, 1)
+  Font.drawCode(Theme.cursorHollow or Theme.cursor, ITEM_CURSOR_X, y)
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
 -- SORT orders the whole result list. NAME goes by displayed name; the machine
 -- modes group the machines first, in that order, and leave everything else
 -- after them by name -- a POTION has no machine number and no base power.
@@ -902,7 +1046,6 @@ local SEARCH_GRID = {
 -- Rows one to four are one glyph per key. The rest are words, and are measured
 -- and centred instead of laid out on the letters' pitch.
 local KEYBOARD_GLYPH_ROWS = 4
-local SORT_PICKER_TY = 6
 
 -- The search keyboard.
 --
@@ -1099,20 +1242,7 @@ end
 -- The sort applies to the results and is the Bag's own saved preference, so
 -- the picker writes it straight through and re-sorts the open pocket.
 function QuickSearch:openSortPicker()
-  local bag = self.bagList
-  local state = bag and bag.modernBag
-  if not state then return end
-  local rows = {}
-  for _, mode in ipairs({ "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" }) do
-    rows[#rows + 1] = {
-      label = MACHINE_SORT_LABELS[mode],
-      onSelect = function()
-        setMachineSort(state, mode)
-        refreshPocket(bag, selectedId(bag))
-      end,
-    }
-  end
-  openMenu(self.game, "SORT", rows, { ty = SORT_PICKER_TY })
+  openSortMenu(self.bagList)
 end
 
 function QuickSearch:sortLabel()
@@ -1259,43 +1389,6 @@ local function machineFilteredRows(game, state)
   return rows
 end
 
-local function reorderWithinBag(item, list)
-  if not item then return end
-  local state = list.modernBag
-  if not state.swapId then
-    state.swapId = item.value
-    list.hollowIndex = list.index
-    return
-  end
-  if state.swapId == item.value then
-    state.swapId = nil
-    list.hollowIndex = nil
-    return
-  end
-
-  local pocket = POCKETS[state.pocket]
-  local order
-  if pocket and pocket.id == "favorites" then
-    order = state.favoriteOrder
-  else
-    local Bag = require("src.inventory.Bag")
-    order = Bag.order(list.game.save)
-  end
-  local from = positionOf(order, state.swapId)
-  local to = positionOf(order, item.value)
-  if from and to then
-    order[from], order[to] = order[to], order[from]
-    if pocket and pocket.id == "favorites" then
-      rebuildPreferenceIndexes(state)
-      persistPreferences(state)
-    end
-    pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
-  end
-  state.swapId = nil
-  list.hollowIndex = nil
-  refreshPocket(list, item.value)
-end
-
 local function openItemTools(item, list)
   if not item or not list or not list.modernBag then return end
   local state = list.modernBag
@@ -1307,12 +1400,14 @@ local function openItemTools(item, list)
     pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
   end
 
-  -- No title: four rows that name themselves do not need one.
+  -- No title: rows that name themselves do not need one.
   --
   -- Menu closes itself around onSelect unless the row asks to stay open, so
   -- none of these close it by hand. Nothing here depends on which side of
   -- onSelect that happens.
   openMenu(list.game, nil, {
+    -- Ordering first: it is about the whole pocket rather than this item.
+    { label = "SORT", onSelect = function() openSortMenu(list) end },
     {
       label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE",
       onSelect = function()
@@ -1334,21 +1429,17 @@ local function openItemTools(item, list)
         refreshPocket(list, id)
       end,
     },
-    { label = "MOVE ITEM", onSelect = function() reorderWithinBag(item, list) end },
+    { label = "MOVE ITEM", onSelect = function() beginMove(item, list) end },
     { label = "CANCEL" },
   }, { ty = ITEM_TOOLS_TY })
 end
 
--- START. In swap mode the press lands the item being moved; otherwise it
--- opens that item's tools.
+-- START opens the tools for the item under the cursor. It cannot land a move
+-- any more: a carry is confirmed with A, and START is swallowed while one is
+-- in progress so the tools cannot open on top of it.
 local function openBagTools(list)
   local item = list.items and list.items[list.index or 1]
-  if not item then return end
-  if list.modernBag and list.modernBag.swapId then
-    reorderWithinBag(item, list)
-  else
-    openItemTools(item, list)
-  end
+  if item then openItemTools(item, list) end
 end
 
 local function decorateBag(game, opts, list, mod)
@@ -1404,6 +1495,28 @@ local function decorateBag(game, opts, list, mod)
     refreshPocket(self, current)
     local input = self.game.input
     local pocket = POCKETS[state.pocket]
+
+    -- Carrying an item takes the D-pad and A over: Up and Down walk it, A puts
+    -- it down, B puts it back. START is swallowed so the tools cannot open on
+    -- top of a move. Left/Right still change pocket, and that drops the carry.
+    if state.swapId then
+      if input:wasPressed("up") then
+        carryStep(self, -1)
+        return
+      elseif input:wasPressed("down") then
+        carryStep(self, 1)
+        return
+      elseif input:wasPressed("a") then
+        endMove(self, "Swap")
+        return
+      elseif input:wasPressed("b") then
+        cancelMove(self)
+        return
+      elseif input:wasPressed("start") then
+        return
+      end
+    end
+
     if input:wasPressed(INFO_ACTION) then
       -- Machine data, not the pocket, is what decides this: a TM reached
       -- through FAVORITES or the results page answers Y/I the same way it
@@ -1440,6 +1553,7 @@ local function decorateBag(game, opts, list, mod)
     if self.itemBox then
       drawPocketHeader(self)
       drawBagMoney(self)
+      if self.modernBag and self.modernBag.swapId then drawCarriedCursor(self) end
     end
   end
 

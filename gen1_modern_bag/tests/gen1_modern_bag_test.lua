@@ -320,10 +320,12 @@ bag.index = 2
 pressed.start = true
 bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
--- No title on the item tools: four rows that name themselves do not need one.
+-- No title on the item tools: rows that name themselves do not need one.
 assert(tools.opts.title == nil, "the item tools grew a title again")
-assert(tools.items[1].label == "ADD FAVORITE")
-tools:choose(1)
+-- Ordering comes first: it is about the pocket rather than about this item.
+assert(tools.items[1].label == "SORT", "SORT is not the first row of the item tools")
+assert(tools.items[2].label == "ADD FAVORITE")
+tools:choose(2)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
 assert(mod.exports.isFavorite("POTION"), "favorite export returned false")
 
@@ -343,8 +345,8 @@ bag.index = potionIndex
 pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "pin tools did not open")
-assert(tools.items[2].label == "PIN TO TOP")
-tools:choose(2)
+assert(tools.items[3].label == "PIN TO TOP")
+tools:choose(3)
 assert(saved.pinned_items[1] == "POTION", "pin was not persisted")
 assert(mod.exports.isPinned("POTION"), "pin export returned false")
 bag:update(0)
@@ -624,7 +626,7 @@ bag.index = swordsIndex
 pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "machine item tools did not open")
-tools:choose(2)
+tools:choose(3)
 bag:update(0)
 assert(bag.items[1].value == "TM_SWORDS_DANCE", "pinned machine must stay above power sorting")
 
@@ -804,8 +806,7 @@ local function assertFits(menu, name)
   end
 end
 
--- The item tools carry no title: four rows that name themselves do not need
--- one.
+-- The item tools carry no title: rows that name themselves do not need one.
 pressed.start = true
 bag:update(0)
 local optionsMenu = assert(stack:top(), "START did not open the item tools")
@@ -1083,3 +1084,141 @@ assert(resultInfo.screenId == "ModernBagMoveInfo", "Y/I opened the wrong screen"
 stack:pop()
 
 print("gen1_modern_bag_results_page_test: ok")
+
+-- Moving an item.
+--
+-- Up to 1.5.0 this was a two-ended swap: pick one item, move the cursor, press
+-- START on a second, and the two traded places with nothing on screen between.
+-- Picking one up now carries it -- Up and Down walk it through the pocket and
+-- the list reorders under it as it goes.
+while stack:top() do stack:pop() end
+-- A pocket with room to walk an item through, ordered by the bag order rather
+-- than by SORT the way TM/HM is.
+for _, id in ipairs({ "REPEL", "SUPER_REPEL", "MAX_REPEL" }) do
+  game.data.items[id] = { name = id:gsub("_", " ") }
+  require("src.inventory.Bag").add(game.save, id, 1)
+end
+bag.modernBag.pocket = 7              -- OTHER
+bag:update(0)
+assert(#bag.items >= 4,
+  "not enough items in OTHER to move one through: " .. #bag.items)
+local startOrder = {}
+for i, row in ipairs(bag.items) do startOrder[i] = row.value end
+
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local moveTools = assert(stack:top(), "START did not open the item tools")
+local moveRow
+for i, row in ipairs(moveTools.items) do
+  if row.label == "MOVE ITEM" then moveRow = i end
+end
+assert(moveRow, "MOVE ITEM is missing from the item tools")
+moveTools:choose(moveRow)
+assert(stack:top() == nil, "the item tools stayed open behind the move")
+local carried = startOrder[1]
+assert(bag.modernBag.swapId == carried, "MOVE ITEM did not pick the item up")
+
+-- Down walks it one row, now, not on some later commit.
+pressed.down = true
+bag:update(0)
+assert(bag.items[2].value == carried,
+  "the carried item did not move down a row: " .. tostring(bag.items[2].value))
+assert(bag.items[1].value == startOrder[2], "the item it passed did not shift up")
+assert(bag.index == 2, "the cursor did not follow the item it is carrying")
+assert(bag.modernBag.swapId == carried, "the item was put down by moving it")
+
+pressed.down = true
+bag:update(0)
+assert(bag.items[3].value == carried, "the carried item did not keep moving")
+
+-- A puts it down, and it stays where it was walked to.
+pressed.a = true
+bag:update(0)
+assert(bag.modernBag.swapId == nil, "A did not put the item down")
+assert(bag.items[3].value == carried, "the item did not stay where it was put")
+
+-- START no longer ends a move -- it is swallowed while one is in progress, so
+-- the tools cannot open on top of a carry.
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local again = assert(stack:top(), "START did not open the item tools")
+for i, row in ipairs(again.items) do
+  if row.label == "MOVE ITEM" then again:choose(i) end
+end
+assert(bag.modernBag.swapId, "the second move did not start")
+pressed.start = true
+bag:update(0)
+assert(stack:top() == nil, "START opened the item tools during a move")
+assert(bag.modernBag.swapId, "START ended the move")
+
+-- B puts it back where it was picked up.
+local before = {}
+for i, row in ipairs(bag.items) do before[i] = row.value end
+pressed.down = true
+bag:update(0)
+pressed.down = true
+bag:update(0)
+assert(bag.items[1].value ~= before[1], "the item did not move before the cancel")
+pressed.b = true
+bag:update(0)
+assert(bag.modernBag.swapId == nil, "B did not end the move")
+for i, value in ipairs(before) do
+  assert(bag.items[i].value == value,
+    ("B left the pocket reordered at row %d: %s"):format(i, bag.items[i].value))
+end
+
+-- The carried item wears the hollow cursor. 1.5.0 set list.hollowIndex for it,
+-- which the engine's item-box path does not read, so nothing looked picked up.
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local third = assert(stack:top(), "START did not open the item tools")
+for i, row in ipairs(third.items) do
+  if row.label == "MOVE ITEM" then third:choose(i) end
+end
+assert(bag.modernBag.swapId, "the third move did not start")
+resetPaint()
+bag:draw()
+local hollow
+for _, call in ipairs(painted.codes) do
+  if call.code == 0xEC then hollow = call end
+end
+assert(hollow, "the carried item was not given the hollow cursor")
+-- In the cursor column, on the row the item is on.
+assert(hollow.x == 40 and hollow.y == 32,
+  ("the hollow cursor is at %d,%d, not the carried row"):format(hollow.x, hollow.y))
+-- The engine's own solid cursor is whited out first, or the two overlap.
+assert(clearedAt(40, 32), "the solid cursor was left under the hollow one")
+pressed.b = true
+bag:update(0)
+resetPaint()
+bag:draw()
+for _, call in ipairs(painted.codes) do
+  assert(call.code ~= 0xEC, "the hollow cursor outlived the move")
+end
+
+-- A pocket whose order it does not control leaves the bag order alone. TM/HM
+-- is drawn in SORT order, so a step there can never land -- and must not
+-- quietly rearrange the order underneath a list that will never show it.
+bag.modernBag.pocket = 4
+bag:update(0)
+local machineOrder = table.concat(game.save.bagOrder, ",")
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local machineTools = assert(stack:top(), "START did not open the item tools")
+for i, row in ipairs(machineTools.items) do
+  if row.label == "MOVE ITEM" then machineTools:choose(i) end
+end
+assert(bag.modernBag.swapId, "the move did not start in TM/HM")
+pressed.down = true
+bag:update(0)
+assert(table.concat(game.save.bagOrder, ",") == machineOrder,
+  "a step that could not land still rearranged the bag order")
+pressed.b = true
+bag:update(0)
+assert(bag.modernBag.swapId == nil, "the move did not end")
+
+print("gen1_modern_bag_move_test: ok")
