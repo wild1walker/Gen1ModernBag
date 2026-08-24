@@ -257,21 +257,19 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 
 Press **START** on a highlighted item to open the item tools:
 
-- **SORT** — re-sorts the open pocket once and then leaves it alone, so MOVE
-  ITEM adjusts what it produced. It rewrites only the slots that pocket already
-  occupies, so the others keep their own order. `A-Z`, `Z-A` and `MOST FIRST`
-  are offered on every pocket; `TM/HM NUMBER`, `POWER HIGH` and `POWER LOW`
-  only on a pocket that holds a machine. `A-Z` sorts a machine by its move
-  rather than by `TM24`.
+- **SORT** — sets the order for the open tab, which stays in it. `A-Z`,
+  `QUANTITY` and `CUSTOM` are offered on every tab; `TM/HM NUMBER`,
+  `POWER HIGH` and `POWER LOW` only on one holding a machine. `A-Z` sorts a
+  machine by its move rather than by `TM24`.
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
-- **MOVE ITEM** — picks the item up and carries it. **Up/Down** walk it through
-  the pocket a row at a time, with the list reordering under it as it goes and
-  the cursor drawn hollow to show you are holding it. **A** places it, **B**
-  puts it back where you picked it up, and changing pocket drops it. Up to
-  1.5.0 this was a two-ended swap confirmed with START, which showed nothing
-  moving and left the cursor solid throughout.
+- **MOVE ITEM** — picks the item up and carries it, putting the tab into
+  `CUSTOM` first so the arrangement is not re-ordered out from under it.
+  **Up/Down** walk it through the pocket a row at a time, with the list
+  reordering under it as it goes and the cursor drawn hollow to show you are
+  holding it. **A** places it, **B** puts it back where you picked it up, and
+  changing tab drops it.
 - **CANCEL** — closes the menu.
 
 Row markers show item status: `F` favorite, `P` pinned, `PF` both.
@@ -281,22 +279,29 @@ keeps its saved status, and returns when reacquired. Pinned items sort above
 unpinned items and are not moved by alphabetical sorting; multiple pinned items
 keep the order in which they were pinned.
 
-### The Bag's order is yours
+### Each tab's order
 
-The Bag is filed once, the first time this version opens it: by pocket and
-display name, TMs and HMs in numerical order with HMs before TMs. After that
-the order is whatever you make of it. **SORT** re-sorts a pocket on demand and
-**MOVE ITEM** rearranges it by hand, and both last — opening the Bag only drops
-what you no longer carry.
+Every tab keeps its own order and stays in it. **SORT** in the item tools sets
+it, and it is saved against that tab:
 
-Up to 1.8.0 the whole order was re-sorted alphabetically on every open, which
-undid every manual move and every one-shot SORT the moment the Bag was closed,
-so no ordering you chose ever survived. Something newly acquired is appended,
-which puts it at the bottom of its own pocket rather than at the end of the
-Bag; `A-Z` tidies the pocket up again whenever you want it.
+- **A-Z** — by displayed name, and a machine by its move rather than by `TM24`.
+- **QUANTITY** — most of first.
+- **CUSTOM** — the order you arranged by hand.
+- **TM/HM NUMBER**, **POWER HIGH**, **POWER LOW** — offered only on a tab that
+  holds a machine.
 
-Pinned items float to the top of their pocket when the rows are drawn, so
-pinning does not disturb the order underneath.
+`A-Z` and `QUANTITY` are worked out from the items every time the rows are
+drawn, so they hold as the Bag changes. `CUSTOM` is the only one the Bag
+stores, and it is what **MOVE ITEM** edits — starting a move puts the tab into
+`CUSTOM` and freezes what is on screen, so nothing jumps and the arrangement is
+not re-ordered out from under you.
+
+Nothing is re-sorted when the Bag opens. Up to 1.8.0 the whole order was
+rewritten alphabetically every time, which undid every arrangement; `A-Z` being
+a mode rather than something done to the order means a Bag that has never been
+sorted looks exactly as it did, with the order underneath left alone.
+
+Pinned items lead their tab whatever the mode says.
 
 ### Quick search
 

@@ -432,40 +432,76 @@ local function openMenu(game, title, items, opts)
   return menu
 end
 
--- Sort orders. The first three apply to anything in the Bag; the rest need a
--- machine to mean anything, and are only offered on a pocket holding one.
+-- How a pocket is ordered.
 --
--- Up to 1.8.0 the whole list was the machine ones plus NAME, which is why SORT
--- looked like it only did something on TM/HM: everywhere else the only option
--- was the order automatic sorting had already put the pocket in.
+-- Each pocket keeps its own mode and stays in it: choosing one is a setting
+-- for that tab, not a one-off rearrangement. ALPHA and QUANTITY are worked out
+-- from the items every time the rows are built, so they hold as the Bag
+-- changes; CUSTOM is the order you arranged by hand, which is what MOVE ITEM
+-- edits and what the Bag stores.
+--
+-- The machine orders are offered only on a pocket holding a machine, since
+-- number and base power mean nothing to a shelf of potions.
 local SORT_MODES = {
-  { id = "NAME", label = "A-Z" },
-  { id = "NAME_DESC", label = "Z-A" },
-  { id = "COUNT", label = "MOST FIRST" },
+  { id = "ALPHA", label = "A-Z" },
+  { id = "QUANTITY", label = "QUANTITY" },
+  { id = "CUSTOM", label = "CUSTOM" },
   { id = "NUMBER", label = "TM/HM NUMBER", machinesOnly = true },
   { id = "POWER_DESC", label = "POWER HIGH", machinesOnly = true },
   { id = "POWER_ASC", label = "POWER LOW", machinesOnly = true },
 }
+local DEFAULT_SORT = "ALPHA"
 
-local SORT_LABELS, MACHINE_SORT_VALUES = {}, {}
+local SORT_LABELS, SORT_VALUES = {}, {}
 for _, mode in ipairs(SORT_MODES) do
   SORT_LABELS[mode.id] = mode.label
-  MACHINE_SORT_VALUES[mode.id] = true
+  SORT_VALUES[mode.id] = true
+end
+
+-- CUSTOM is an order, not a rule: there is nothing to arrange on a page that
+-- is rebuilt from a query every time.
+local function sortModeAvailable(mode, pocket, machines)
+  if mode.machinesOnly and not machines then return false end
+  if mode.id == "CUSTOM" and pocket and pocket.transient then return false end
+  return true
+end
+
+-- One mode per pocket, keyed by pocket id and saved, so a tab stays in the
+-- order you put it in across sessions.
+local function cleanSavedSorts(value)
+  local out = {}
+  if type(value) ~= "table" then return out end
+  for id, mode in pairs(value) do
+    if type(id) == "string" and SORT_VALUES[upper(mode)] then
+      out[id] = upper(mode)
+    end
+  end
+  return out
 end
 
 local function loadPreferenceState(mod)
   local favorites = cleanSavedOrder(mod.save:get("favorite_items", {}))
   local pinned = cleanSavedOrder(mod.save:get("pinned_items", {}))
-  local machineSort = upper(mod.save:get("machine_sort", "NUMBER"))
-  if not MACHINE_SORT_VALUES[machineSort] then machineSort = "NUMBER" end
   return {
     mod = mod,
     favoriteOrder = favorites,
     favoriteSet = orderIndex(favorites),
     pinnedOrder = pinned,
     pinnedSet = orderIndex(pinned),
-    machineSort = machineSort,
+    pocketSort = cleanSavedSorts(mod.save:get("pocket_sort", {})),
   }
+end
+
+local function pocketSortMode(state, pocketId)
+  local saved = state and state.pocketSort
+  return (saved and saved[pocketId]) or DEFAULT_SORT
+end
+
+local function setPocketSort(state, pocketId, mode)
+  if not SORT_VALUES[mode] then return end
+  state.pocketSort = state.pocketSort or {}
+  state.pocketSort[pocketId] = mode
+  if state.mod then state.mod.save:set("pocket_sort", state.pocketSort) end
 end
 
 local function persistPreferences(state)
@@ -628,15 +664,16 @@ local function rowNameKey(row)
 end
 
 local function rowSortLess(a, b, mode)
-  if mode == "NAME" or mode == "NAME_DESC" then
+  if mode == "ALPHA" then
     local ak, bk = rowNameKey(a), rowNameKey(b)
-    if ak ~= bk then
-      if mode == "NAME_DESC" then return ak > bk end
-      return ak < bk
-    end
-  elseif mode == "COUNT" then
+    if ak ~= bk then return ak < bk end
+  elseif mode == "QUANTITY" then
     local ac, bc = a.modernCount or 0, b.modernCount or 0
     if ac ~= bc then return ac > bc end
+  elseif mode == "CUSTOM" then
+    local ai = a.modernFavoriteRank or a.modernSourceIndex or 0
+    local bi = b.modernFavoriteRank or b.modernSourceIndex or 0
+    if ai ~= bi then return ai < bi end
   else
     -- A machine order: the machines first, then everything else by name.
     local am, bm = a.modernMachine ~= nil, b.modernMachine ~= nil
@@ -651,12 +688,7 @@ local function orderRowsBy(rows, mode)
   table.sort(rows, function(a, b) return rowSortLess(a, b, mode) end)
 end
 
-local function setMachineSort(state, mode)
-  mode = upper(mode)
-  if not MACHINE_SORT_VALUES[mode] then mode = "NUMBER" end
-  state.machineSort = mode
-  if state.mod then state.mod.save:set("machine_sort", mode) end
-end
+
 
 local function inventorySignature(game)
   local Bag = require("src.inventory.Bag")
@@ -787,17 +819,17 @@ local function itemRows(game, pocketId, state)
       end
     end
   end
+  -- The pocket's own mode, worked out from the items every time, so it holds
+  -- as the Bag changes rather than being a rearrangement that decays.
+  local mode = pocketSortMode(state, pocketId)
   table.sort(rows, function(a, b)
+    -- Pinned rows lead their pocket whatever the mode says.
     if a.modernPinned ~= b.modernPinned then return a.modernPinned end
     if a.modernPinned and b.modernPinned
        and a.modernPinRank ~= b.modernPinRank then
       return a.modernPinRank < b.modernPinRank
     end
-    if pocketId == "favorites"
-       and a.modernFavoriteRank ~= b.modernFavoriteRank then
-      return a.modernFavoriteRank < b.modernFavoriteRank
-    end
-    return a.modernSourceIndex < b.modernSourceIndex
+    return rowSortLess(a, b, mode)
   end)
   return rows
 end
@@ -862,7 +894,8 @@ local function refreshPocket(list, preserveId)
   -- spelled out on the Bag itself any more.
   state.startActionLabel = "TOOLS"
   state.selectActionLabel = "SEARCH"
-  state.machineSortLabel = SORT_LABELS[state.machineSort] or SORT_LABELS.NAME
+  -- Published for Gen1 Modern UI: the order this tab is in.
+  state.pocketSortLabel = SORT_LABELS[pocketSortMode(state, pocket.id)]
   -- The whole footer is now the amount on the window's bottom border.
   list.footer = moneyText(list.game)
   restoreCursor(list, rows, preserveId)
@@ -923,26 +956,19 @@ end
 -- Rewrites the open pocket's slice of the order it is drawn from, leaving
 -- every other pocket's items exactly where they were: only the positions this
 -- pocket already occupies are written back, in the wanted order.
-local sortPocket
-function sortPocket(list, mode)
+-- Freezing what is on screen into the order the pocket is stored in, so a
+-- hand-arranged order starts from the one you were just looking at rather than
+-- from whatever the Bag happened to hold underneath.
+--
+-- Only the slots this pocket already occupies are written back, in ascending
+-- order, so every other pocket keeps its own. The slot list comes out unsorted
+-- as soon as a pocket is drawn differently from how it is stored, which pinned
+-- rows and every non-CUSTOM mode do.
+local function freezeOrder(list)
   local state = list.modernBag
   local pocket = state and POCKETS[state.pocket]
   local rows = list.items or {}
-  if not pocket then return false end
-
-  -- The results page has no order of its own to rewrite: it is rebuilt from
-  -- the query every time. Its ordering is the saved preference the rebuild
-  -- reads, so on that page SORT sets that instead -- and does so however few
-  -- rows this particular search came back with, since the preference outlives
-  -- it.
-  if pocket.transient then
-    setMachineSort(state, mode)
-    refreshPocket(list, selectedId(list))
-    return true
-  end
-
-  -- A pocket with nothing to reorder.
-  if #rows < 2 then return false end
+  if not pocket or pocket.transient or #rows < 2 then return false end
 
   local order
   if pocket.id == "favorites" then
@@ -951,40 +977,53 @@ function sortPocket(list, mode)
     order = require("src.inventory.Bag").order(list.game.save)
   end
 
-  local slots, sorted = {}, {}
+  local slots, ids = {}, {}
   for _, row in ipairs(rows) do
     local at = positionOf(order, row.value)
     if at then
       slots[#slots + 1] = at
-      sorted[#sorted + 1] = row
+      ids[#ids + 1] = row.value
     end
   end
   if #slots < 2 then return false end
   table.sort(slots)
-  orderRowsBy(sorted, mode)
-  for i, slot in ipairs(slots) do order[slot] = sorted[i].value end
+  for i, slot in ipairs(slots) do order[slot] = ids[i] end
 
   if pocket.id == "favorites" then
     rebuildPreferenceIndexes(state)
     persistPreferences(state)
   end
+  return true
+end
+
+-- Choosing an order is a setting for that tab, kept until it is changed again.
+local function applyPocketSort(list, mode)
+  local state = list.modernBag
+  local pocket = state and POCKETS[state.pocket]
+  if not pocket or not SORT_VALUES[mode] then return false end
+  -- Arranging by hand starts from what is on screen.
+  if mode == "CUSTOM" and pocketSortMode(state, pocket.id) ~= "CUSTOM" then
+    freezeOrder(list)
+  end
+  setPocketSort(state, pocket.id, mode)
   pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
   refreshPocket(list, selectedId(list))
   return true
 end
 
 local function sortMenuRows(bagList)
+  local state = bagList.modernBag
+  local pocket = state and POCKETS[state.pocket]
   local machines = false
   for _, row in ipairs(bagList.items or {}) do
     if row.modernMachine then machines = true break end
   end
   local rows = {}
   for _, mode in ipairs(SORT_MODES) do
-    -- Machine number and base power mean nothing to a pocket of potions.
-    if machines or not mode.machinesOnly then
+    if sortModeAvailable(mode, pocket, machines) then
       rows[#rows + 1] = {
         label = mode.label,
-        onSelect = function() sortPocket(bagList, mode.id) end,
+        onSelect = function() applyPocketSort(bagList, mode.id) end,
       }
     end
   end
@@ -1019,6 +1058,16 @@ end
 local function beginMove(item, list)
   local state = list.modernBag
   if not item or not state then return end
+  -- Arranging by hand is what CUSTOM is: in any other mode the pocket would be
+  -- re-ordered out from under the move on the next redraw. Switching here
+  -- freezes what is on screen, so the arrangement starts from what you see.
+  local pocket = POCKETS[state.pocket]
+  if pocket and not pocket.transient
+     and pocketSortMode(state, pocket.id) ~= "CUSTOM" then
+    freezeOrder(list)
+    setPocketSort(state, pocket.id, "CUSTOM")
+    refreshPocket(list, item.value)
+  end
   state.swapId = item.value
   list.hollowIndex = list.index
   -- Where it came from, so B can put it back.
@@ -1124,7 +1173,8 @@ end
 -- modes group the machines first, in that order, and leave everything else
 -- after them by name -- a POTION has no machine number and no base power.
 local function sortSearchRows(rows, state)
-  orderRowsBy(rows, state and state.machineSort or "NAME")
+  -- The results page is a pocket like any other as far as its order goes.
+  orderRowsBy(rows, pocketSortMode(state, "results"))
 end
 
 local function searchRows(game, query, state)
@@ -1562,13 +1612,9 @@ local function decorateBag(game, opts, list, mod)
   local preferences = loadPreferenceState(mod)
   local initialPocket = openingPocketIndex(mod)
   local repeatConfig = scrollConfig(mod)
-  -- Filed once, the first time this mod opens the Bag, so an existing save
-  -- arrives sorted. After that the order is the player's -- SORT and MOVE ITEM
-  -- would mean nothing if opening the Bag undid them.
-  if not mod.save:get("order_filed", false) then
-    autoSortBag(game, preferences)
-    mod.save:set("order_filed", true)
-  end
+  -- Nothing is filed on open. Every pocket starts in A-Z and is drawn that way
+  -- from the items themselves, so the stored order is only ever the CUSTOM one
+  -- -- and opening the Bag cannot undo an arrangement it never touches.
   pruneBagOrder(game)
   list.modernBag = {
     pocket = initialPocket,
@@ -1581,7 +1627,7 @@ local function decorateBag(game, opts, list, mod)
     favoriteSet = preferences.favoriteSet,
     pinnedOrder = preferences.pinnedOrder,
     pinnedSet = preferences.pinnedSet,
-    machineSort = preferences.machineSort,
+    pocketSort = preferences.pocketSort,
     machineFilters = { query = "", type = "ANY", damageClass = "ANY" },
     searchAvailable = true,
     startActionLabel = "TOOLS",
@@ -1989,7 +2035,7 @@ return function(mod)
   end
   mod.exports.machineRows = function(game, filters, sortMode)
     local state = loadPreferenceState(mod)
-    if sortMode then setMachineSort(state, sortMode) end
+    if sortMode then setPocketSort(state, "machines", upper(sortMode)) end
     state.machineFilters = filters or { query = "", type = "ANY", damageClass = "ANY" }
     return machineFilteredRows(game, state)
   end
