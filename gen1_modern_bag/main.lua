@@ -879,10 +879,21 @@ function sortPocket(list, mode)
   local state = list.modernBag
   local pocket = state and POCKETS[state.pocket]
   local rows = list.items or {}
-  if not pocket or #rows < 2 then return false end
-  -- The results page is ordered by the search that filled it, not by an order
-  -- there is anything to rewrite.
-  if pocket.transient then return false end
+  if not pocket then return false end
+
+  -- The results page has no order of its own to rewrite: it is rebuilt from
+  -- the query every time. Its ordering is the saved preference the rebuild
+  -- reads, so on that page SORT sets that instead -- and does so however few
+  -- rows this particular search came back with, since the preference outlives
+  -- it.
+  if pocket.transient then
+    setMachineSort(state, mode)
+    refreshPocket(list, selectedId(list))
+    return true
+  end
+
+  -- A pocket with nothing to reorder.
+  if #rows < 2 then return false end
 
   local order
   if pocket.id == "favorites" then
@@ -913,8 +924,7 @@ function sortPocket(list, mode)
   return true
 end
 
-local function sortMenuRows(bagList, forResults)
-  local state = bagList.modernBag
+local function sortMenuRows(bagList)
   local machines = false
   for _, row in ipairs(bagList.items or {}) do
     if row.modernMachine then machines = true break end
@@ -922,31 +932,19 @@ local function sortMenuRows(bagList, forResults)
   local rows = {}
   for _, mode in ipairs(SORT_MODES) do
     -- Machine number and base power mean nothing to a pocket of potions.
-    if mode == "NAME" or forResults or machines then
+    if mode == "NAME" or machines then
       rows[#rows + 1] = {
         label = MACHINE_SORT_LABELS[mode],
-        onSelect = function()
-          if forResults then
-            setMachineSort(state, mode)
-            refreshPocket(bagList, selectedId(bagList))
-          else
-            sortPocket(bagList, mode)
-          end
-        end,
+        onSelect = function() sortPocket(bagList, mode) end,
       }
     end
   end
   return rows
 end
 
-local function openResultSortMenu(bagList)
-  if not (bagList and bagList.modernBag) then return end
-  openMenu(bagList.game, "SORT", sortMenuRows(bagList, true), { ty = SORT_PICKER_TY })
-end
-
 local function openPocketSortMenu(bagList)
   if not (bagList and bagList.modernBag) then return end
-  openMenu(bagList.game, "SORT", sortMenuRows(bagList, false), { ty = SORT_PICKER_TY })
+  openMenu(bagList.game, "SORT", sortMenuRows(bagList), { ty = SORT_PICKER_TY })
 end
 
 -- Moving an item.
@@ -1124,12 +1122,9 @@ local SEARCH_GRID = {
   { "S", "T", "U", "V", "W", "X", "Y", "Z", "0" },
   { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
   { "DEL", "CLR", "GO", "EXIT" },
-  -- Result order. Type and class are typed into the query; this one is a
-  -- choice, so it stays a key, with its current value on the line above.
-  { "SORT" },
 }
 
--- Rows one to four are one glyph per key. The rest are words, and are measured
+-- Rows one to four are one glyph per key. The last is words, and is measured
 -- and centred instead of laid out on the letters' pitch.
 local KEYBOARD_GLYPH_ROWS = 4
 
@@ -1153,14 +1148,10 @@ local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
 local KEYBOARD_HEADER_Y = WINDOW_TOP_Y + 8
 local KEYBOARD_GRID_TOP = 40
 local KEYBOARD_ROW_H = 16
-local KEYBOARD_WORD_ROW_Y = { 104, 112 }
-local KEYBOARD_HINT_Y = 120
-
--- Eighteen columns each; both keyboards take the same keys.
-local KEYBOARD_HINTS = {
-  "A TYPE  B DEL/EXIT",
-  "SEL CLR  START GO",
-}
+-- The one word row, low enough to sit clear of the grid. What is left over
+-- falls either side of it: a row above FIND, two between FIND and the letters,
+-- two between the letters and this, and two below.
+local KEYBOARD_WORD_ROW_Y = { 112 }
 
 local function drawKeyboardGrid(screen, Font, Theme)
   for r = 1, KEYBOARD_GLYPH_ROWS do
@@ -1206,9 +1197,6 @@ local function drawSearchKeyboard(screen, headerLines)
     y = y + 8
   end
   drawKeyboardGrid(screen, Font, Theme)
-  for i, hint in ipairs(KEYBOARD_HINTS) do
-    Font.draw(hint, KEYBOARD_LEFT_X, KEYBOARD_HINT_Y + (i - 1) * 8)
-  end
   love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -1281,9 +1269,6 @@ function QuickSearch:activateCurrentKey()
   elseif key == "EXIT" then
     self:close()
     return true
-  elseif key == "SORT" then
-    self:openSortPicker()
-    return true
   elseif #self.glyphs < SEARCH_QUERY_LIMIT then
     self.glyphs[#self.glyphs + 1] = key
   end
@@ -1327,22 +1312,10 @@ end
 
 -- The sort applies to the results and is the Bag's own saved preference, so
 -- the picker writes it straight through and re-sorts the open pocket.
-function QuickSearch:openSortPicker()
-  openResultSortMenu(self.bagList)
-end
-
-function QuickSearch:sortLabel()
-  local state = self.bagList and self.bagList.modernBag
-  local mode = state and state.machineSort or "NAME"
-  return MACHINE_SORT_LABELS[mode] or MACHINE_SORT_LABELS.NAME
-end
-
 function QuickSearch:draw()
   drawSearchKeyboard(self, {
     -- "FIND: " plus the twelve glyphs the query is capped at is eighteen.
     "FIND: " .. (self.query == "" and "ALL" or self.query),
-    -- "SORT: POWER HIGH" is the widest this gets, at sixteen.
-    "SORT: " .. self:sortLabel(),
   })
 end
 

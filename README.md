@@ -303,13 +303,15 @@ everywhere.
 - **B** deletes the last character, or closes search when the query is empty.
 - **SELECT** clears the query.
 - **START**, the Modern UI **SEARCH** button, or **GO** shows all matches.
-- **SORT** chooses the order the results come back in. This one is a saved
-  preference rather than a one-shot re-sort: the results page is built from the
-  query every time, so it has no order of its own to keep.
+Ordering the results is the item tools' **SORT**, pressed on the results page
+itself. That page has no order of its own to rewrite — it is rebuilt from the
+query every time — so SORT there sets the saved preference the rebuild reads,
+rather than re-sorting in place the way it does on a real pocket. Up to 1.7.0
+this was a key on the keyboard.
 
 Search covers every pocket and matches both the displayed name and the internal
 item identifier. An empty query lists the whole Bag alphabetically. The
-keyboard shows the query and the sort, and nothing else: it carried a live
+keyboard shows the query and nothing else: it carried a live
 match count up to 1.3.1, which was the results page's job done twice over, and
 the only reason the search re-ran on every keystroke.
 
@@ -321,12 +323,12 @@ instead of the keyboard when you happened to be on the TM/HM pocket; folding
 them into the query retired the hub, its two pickers and its own move-name
 keyboard.
 
-**SORT** stays a choice rather than a term, because it is an ordering: it is a
-key on the keyboard with its current value shown under `FIND`. `NAME` orders
-everything by displayed name; `NUMBER`, `POWER HIGH` and `POWER LOW` group the
-machines first in that order and leave everything else after them by name, a
-POTION having no machine number and no base power. It is the same saved
-preference that orders the TM/HM pocket.
+**SORT** stays a choice rather than a term, because it is an ordering — but it
+lives in the item tools, not on the keyboard. `NAME` orders everything by
+displayed name, and a machine by its move rather than by `TM24`; `NUMBER`,
+`POWER HIGH` and `POWER LOW` group the machines first in that order and leave
+everything else after them by name, a POTION having no machine number and no
+base power.
 
 The matches do not open a page of their own. They are handed back to the Bag,
 which grows a **RESULTS** pocket for them and puts you on it — so they are read

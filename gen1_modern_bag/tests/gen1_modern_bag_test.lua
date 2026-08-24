@@ -912,8 +912,9 @@ for y, calls in pairs(byRow) do
 end
 
 -- All four action words survive, on one row of their own.
+local ACTION_ROW_Y = 112
 local actions = {}
-for _, call in ipairs(byRow[104] or {}) do actions[#actions + 1] = call.text end
+for _, call in ipairs(byRow[ACTION_ROW_Y] or {}) do actions[#actions + 1] = call.text end
 table.sort(actions)
 assert(table.concat(actions, " ") == "CLR DEL EXIT GO",
   "the action row is not DEL/CLR/GO/EXIT: " .. table.concat(actions, " "))
@@ -928,6 +929,26 @@ for i, call in ipairs(letters) do
   assert(call.x == 16 + (i - 1) * 16, "letter " .. call.text .. " is off the cell pitch")
 end
 assert(#painted.codes == 1, "the keyboard should draw exactly one cursor")
+
+-- The keyboard carries the query and the keys and nothing else: no control
+-- legend, and no SORT key. Ordering is the item tools' SORT, which on the
+-- results page sets the order that page is rebuilt in.
+for _, call in ipairs(painted.text) do
+  local text = call.text
+  assert(not text:find("TYPE", 1, true) and not text:find("DEL/EXIT", 1, true)
+    and not text:find("SEL CLR", 1, true),
+    ("the control legend is still on the keyboard: %q"):format(text))
+  assert(text ~= "SORT" and not text:find("^SORT:"),
+    ("the keyboard still carries a sort control: %q"):format(text))
+end
+assert(#keyboard:grid() == 5, "the keyboard grid is not five rows")
+-- FIND is the only line above the grid.
+local aboveGrid = {}
+for _, call in ipairs(painted.text) do
+  if call.y >= KB_TOP and call.y < 40 then aboveGrid[#aboveGrid + 1] = call.text end
+end
+assert(#aboveGrid == 1 and aboveGrid[1]:find("^FIND: "),
+  "the header is not just the query: " .. table.concat(aboveGrid, " | "))
 
 -- A title too wide for its window still cannot rub out a corner glyph: the
 -- clearance is clamped to the columns between them. A font mod with wider
@@ -1039,29 +1060,24 @@ for _, row in ipairs(bag.items) do
   assert(row.modernMachine, "a machine result lost its machine data")
 end
 
--- SORT is the one filter that stays a choice, so it is a key on the keyboard
--- and its value is shown above the grid. It writes the Bag's saved preference
--- and re-sorts the open pocket.
-pressed.select = true
+-- SORT is the item tools' row on this page too, but it means something else
+-- here: the results page has no order of its own to rewrite, so it sets the
+-- saved preference the page is rebuilt in. The keyboard carries no sort
+-- control at all -- it went with the control legend.
+bag.index = 1
+pressed.start = true
 bag:update(0)
-local sortSearch = assert(stack:top(), "SELECT did not reopen the search")
-local sortRow = #sortSearch:grid()
-assert(sortSearch:grid()[sortRow][1] == "SORT", "the keyboard has no SORT key")
-sortSearch.row, sortSearch.col = sortRow, 1
-pressed.a = true
-sortSearch:update(0)
-local sortPicker = assert(stack:top(), "the SORT key opened no picker")
-assert(sortPicker ~= sortSearch, "the SORT key did not open a picker")
+local resultTools = assert(stack:top(), "START did not open the item tools on the results")
+assert(resultTools.items[1].label == "SORT", "SORT is not the first row")
+resultTools:choose(1)
+local sortPicker = assert(stack:top(), "SORT opened no picker")
 local powerRow
 for i, row in ipairs(sortPicker.items) do
   if row.label == "POWER HIGH" then powerRow = i end
 end
-assert(powerRow, "the sort picker has no POWER HIGH")
+assert(powerRow, "the sort picker has no POWER HIGH on a page holding machines")
 sortPicker:choose(powerRow)
-assert(saved.machine_sort == "POWER_DESC", "the sort was not persisted")
-assert(sortSearch:sortLabel() == "POWER HIGH",
-  "the keyboard does not show the sort it just set")
-sortSearch:close()
+assert(saved.machine_sort == "POWER_DESC", "the results order was not persisted")
 
 -- And the results follow it: the machine modes group the machines first, in
 -- that order, and leave everything else after them by name.

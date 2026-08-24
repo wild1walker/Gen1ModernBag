@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.8.0
+
+- **The search keyboard carries the query and the keys, and nothing else.**
+  The `A TYPE / B DEL-EXIT / SEL CLR / START GO` legend is gone -- every one of
+  those is a key on the grid or the button you would reach for anyway -- and so
+  is the SORT key and the `SORT:` line above the grid.
+- **Ordering is the item tools' SORT on every page, including the results.**
+  The results page has no order of its own to rewrite -- it is rebuilt from the
+  query every time -- so SORT there sets the saved preference the rebuild
+  reads, which is what the keyboard's SORT key used to do. Nothing was lost by
+  taking the key off the keyboard.
+- SORT on the results page now applies however few rows the search came back
+  with. The "nothing to reorder" guard was running first, so a one-row page
+  silently ignored it, even though the preference outlives that search.
+- Respaced the keyboard for what is left: a row above `FIND`, two between
+  `FIND` and the letters, two between the letters and the action row, and two
+  below it.
+
+---
+
 ## 1.7.0
 
 - **SORT in the item tools re-sorts the open pocket once and then leaves it
