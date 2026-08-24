@@ -97,10 +97,25 @@ local HEADER_NAME_WIDTH = HEADER_RIGHT_X - HEADER_NAME_X
 -- drawn straight onto a border would have the line running through the
 -- letters. Painting the cells white first leaves the line either side of the
 -- label and nothing behind it.
+--
+-- Knock out exactly the width of the text and the line ends flush against the
+-- first glyph and restarts flush against the last, which reads as the frame
+-- touching the letters. src/ui/Menu.lua's own title does this. A tile of
+-- clearance at each end is what buys the gap; the label itself does not move.
+local BORDER_LABEL_PAD = 8
+
 local function clearBorderRun(x, y, width)
   if width <= 0 then return end
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.rectangle("fill", x, y, width, 8)
+end
+
+-- The padded run, clamped so it can never rub out a corner glyph: those are
+-- the columns at tx and tx + tw - 1, and the run lives between them.
+local function clearLabelRun(x, y, width, tx, tw)
+  local left = math.max((tx + 1) * 8, x - BORDER_LABEL_PAD)
+  local right = math.min((tx + tw - 1) * 8, x + width + BORDER_LABEL_PAD)
+  clearBorderRun(left, y, right - left)
 end
 
 -- Centre a label between a box's corner columns, on the 8px column grid the
@@ -110,10 +125,10 @@ local function borderLabelX(Font, text, tx, tw)
   return (tx + 1) * 8 + math.floor(slack / 16) * 8
 end
 
--- Label a box on its top border row: knock out the line, then draw.
+-- Label a box on its top border row: knock the line out, then draw.
 local function drawBorderLabel(Font, text, tx, ty, tw)
   local x = borderLabelX(Font, text, tx, tw)
-  clearBorderRun(x, ty * 8, Font.width(text))
+  clearLabelRun(x, ty * 8, Font.width(text), tx, tw)
   love.graphics.setColor(0, 0, 0, 1)
   Font.draw(text, x, ty * 8)
   return x
@@ -136,7 +151,30 @@ end
 
 -- Trim to a pixel budget rather than a character count: a font mod can ship
 -- variable-width glyphs, and Font.width is what measures them.
+--
+-- Trim by glyphs, not by bytes. A label can carry a multi-byte character --
+-- POKé, the ¥ -- or a Gen 1 control code, and half of one of those is not a
+-- character. Font.split is the engine's own glyph split, the same one Menu
+-- measures its title with; it is used when it round-trips, so a build without
+-- it still trims the old way rather than breaking.
+local function labelGlyphs(Font, label)
+  if type(Font.split) ~= "function" then return nil end
+  local ok, glyphs = pcall(Font.split, label)
+  if not ok or type(glyphs) ~= "table" then return nil end
+  local joined = table.concat(glyphs)
+  if joined ~= label then return nil end
+  return glyphs
+end
+
 local function fitLabel(Font, label, budget)
+  if Font.width(label) <= budget then return label end
+  local glyphs = labelGlyphs(Font, label)
+  if glyphs then
+    while #glyphs > 0 and Font.width(table.concat(glyphs)) > budget do
+      table.remove(glyphs)
+    end
+    return table.concat(glyphs)
+  end
   while #label > 0 and Font.width(label) > budget do
     label = label:sub(1, #label - 1)
   end
@@ -149,15 +187,20 @@ local function drawPocketHeader(list)
   if not pocket then return end
   local Font = require("src.render.Font")
   local Theme = require("src.ui.Theme")
-  local label = fitLabel(Font, pocket.label, HEADER_NAME_WIDTH)
+  -- Two of the field's twelve columns are the name's clearance.
+  local label = fitLabel(Font, pocket.label,
+    HEADER_NAME_WIDTH - BORDER_LABEL_PAD * 2)
   -- Centre the name between the arrows, which keep their own columns on every
   -- pocket so the keys that change pocket never move.
   local slack = math.max(0, HEADER_NAME_WIDTH - Font.width(label))
   local nameX = HEADER_NAME_X + math.floor(slack / 16) * 8
 
   -- One run per glyph group, so the border survives in the gaps between them.
+  -- The name is padded; the arrows are not, because they sit against the
+  -- corner glyphs and clearance on their outer side would rub one out.
   clearBorderRun(HEADER_LEFT_X, HEADER_Y, 8)
-  clearBorderRun(nameX, HEADER_Y, Font.width(label))
+  clearBorderRun(nameX - BORDER_LABEL_PAD, HEADER_Y,
+    Font.width(label) + BORDER_LABEL_PAD * 2)
   clearBorderRun(HEADER_RIGHT_X, HEADER_Y, 8)
 
   love.graphics.setColor(0, 0, 0, 1)
@@ -175,10 +218,11 @@ end
 -- amount lands exactly where the bottom-right of the item window is.
 --
 -- LIST_MENU_BOX ends on tile row 12, so that border is the row at y = 96, and
--- its last column before the corner ends at x = 152 -- the column the Right
--- arrow occupies on the top border.
+-- The amount stops one column short of the corner, at x = 144, so the tile
+-- between it and the corner glyph is its clearance -- the same tile the rule
+-- gives it at the other end.
 local MONEY_Y = 96
-local MONEY_RIGHT_X = 152
+local MONEY_RIGHT_X = 144
 
 local function moneyText(game)
   local amount = math.floor(tonumber(game and game.save and game.save.money) or 0)
@@ -189,9 +233,12 @@ local function drawBagMoney(list)
   local text = list.footer
   if type(text) ~= "string" or text == "" then return end
   local Font = require("src.render.Font")
-  -- Never past the corner at the other end, however wide the glyphs are.
-  local x = math.max(HEADER_LEFT_X, MONEY_RIGHT_X - Font.width(text))
-  clearBorderRun(x, MONEY_Y, MONEY_RIGHT_X - x)
+  -- Never past its own clearance at the other end, however wide the glyphs
+  -- are: x = 40 is the column the Left arrow sits in on the top border.
+  local x = math.max(HEADER_LEFT_X + BORDER_LABEL_PAD,
+    MONEY_RIGHT_X - Font.width(text))
+  clearBorderRun(x - BORDER_LABEL_PAD,
+    MONEY_Y, (MONEY_RIGHT_X - x) + BORDER_LABEL_PAD * 2)
   love.graphics.setColor(0, 0, 0, 1)
   Font.draw(text, x, MONEY_Y)
   love.graphics.setColor(1, 1, 1, 1)
@@ -237,7 +284,10 @@ end
 -- is a four-option window.
 local function popupGeometry(list)
   local Font = require("src.render.Font")
-  local widest = Font.width(tostring(list.title or ""))
+  -- The title is on the border, between the corners, with a tile of clearance
+  -- at each end -- so it needs its own width plus two, and a narrower box
+  -- would run the padded title into a corner glyph.
+  local widest = Font.width(tostring(list.title or "")) + BORDER_LABEL_PAD * 2
   for _, item in ipairs(list.items or {}) do
     -- Rows are indented by the cursor column; the title is not.
     local width = Font.width(tostring(item.label or "")) + 8
@@ -253,7 +303,9 @@ local function popupGeometry(list)
     tw = tw,
     th = th,
     visible = visible,
-    titleWidth = (tw - 2) * 8,
+    -- Corners, and a tile of clearance inside each: the widest a title on
+    -- this box's border can be drawn.
+    titleWidth = (tw - 4) * 8,
     labelWidth = (tw - 2) * 8 - 8,
   }
 end

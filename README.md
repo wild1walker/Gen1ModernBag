@@ -104,6 +104,18 @@ onto the line would have it running through the letters. The header knocks out
 one run per glyph group, under the Left arrow, under the name and under the
 Right arrow, so the line survives in the gaps between them.
 
+Each run is a tile wider than the glyphs it covers, at both ends. Knocking out
+exactly the width of the text — which is what `src/ui/Menu.lua` does with its
+own title — leaves the rule ending flush against the first glyph and restarting
+flush against the last, and that reads as the frame touching the letters. The
+label does not move; the clearance is bought in tiles either side of it, and is
+clamped so it can never rub out a corner glyph. The same applies to every
+window this mod titles, so a popup is sized for its title *plus* that
+clearance: a title wider than `tw - 4` tiles has nowhere to put it and would
+run into a corner — the same defect at the other end. The arrows are the
+exception: they sit against the corners already, so clearance on their outer
+side would be the thing that rubs one out.
+
 Before 1.3.0 the header sat on the empty interior row below the border instead:
 the box interior starts at y = 24 and the first item name is drawn at y = 32, so
 the row at y = 24 is unused.

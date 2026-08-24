@@ -82,9 +82,14 @@ package.preload["src.render.Font"] = function()
   function Font.drawBox(tx, ty, tw, th)
     painted.boxes[#painted.boxes + 1] = { tx = tx, ty = ty, tw = tw, th = th }
   end
+  -- The engine's own glyph split: one entry per drawn tile.
+  function Font.split(text)
+    local out = {}
+    for _, cp in utf8.codes(tostring(text)) do out[#out + 1] = utf8.char(cp) end
+    return out
+  end
   function Font.width(text)
-    text = tostring(text)
-    return (utf8.len(text) or #text) * 8
+    return #Font.split(text) * 8
   end
   return Font
 end
@@ -394,10 +399,20 @@ assert(clearsOnRow(ITEM_BOX_TOP_Y) == 3,
 assert(clearedAt(40, ITEM_BOX_TOP_Y), "the Left arrow was drawn onto the border line")
 assert(clearedAt(72, ITEM_BOX_TOP_Y), "the pocket name was drawn onto the border line")
 assert(clearedAt(144, ITEM_BOX_TOP_Y), "the Right arrow was drawn onto the border line")
-assert(not clearedAt(64, ITEM_BOX_TOP_Y),
-  "the border was knocked out between the Left arrow and the name")
-assert(not clearedAt(112, ITEM_BOX_TOP_Y),
-  "the border was knocked out between the name and the Right arrow")
+-- The knock-out runs a tile past each end of the name, so the rule stops
+-- short of the letters instead of ending flush against them. Knocking out
+-- exactly the text's width is what src/ui/Menu.lua does with its own title,
+-- and it is what makes the frame look like it is touching the letters.
+local nameRight = name.x + (utf8.len(name.text) or #name.text) * 8
+assert(clearedAt(name.x - 8, ITEM_BOX_TOP_Y),
+  "the rule runs up flush against the first letter of the pocket name")
+assert(clearedAt(nameRight, ITEM_BOX_TOP_Y),
+  "the rule restarts flush against the last letter of the pocket name")
+-- And no further: the rule still survives either side of that clearance.
+assert(not clearedAt(name.x - 16, ITEM_BOX_TOP_Y),
+  "the name's knock-out ran past its own clearance")
+assert(not clearedAt(nameRight + 8, ITEM_BOX_TOP_Y),
+  "the name's knock-out ran past its own clearance")
 assert(ballsOpen.title == "BALLS",
   "wrong pocket title: " .. tostring(ballsOpen.title))
 
@@ -421,7 +436,7 @@ assert(ballsOpen.title == "TM HM",
 -- LIST_MENU_BOX ends on tile row 12, so that border is the row at y = 96, and
 -- its last column before the corner ends at x = 152.
 local MONEY_Y = 96
-local MONEY_RIGHT_X = 152
+local MONEY_RIGHT_X = 144
 
 local function moneyPaint(list)
   resetPaint()
@@ -438,13 +453,18 @@ end
 local amount, below = moneyPaint(ballsOpen)
 assert(amount, "the money was not painted")
 assert(amount.text == "¥1234", "wrong money line: " .. amount.text)
--- Right-aligned to the column the Right arrow occupies on the top border.
+-- Right-aligned, stopping one column short of the corner so the tile between
+-- the two is the amount's clearance.
 assert(amount.x + (utf8.len(amount.text) or #amount.text) * 8 == MONEY_RIGHT_X,
-  "the money is not flush with the window's right edge: x = " .. amount.x)
+  "the money is not right-aligned in the border: x = " .. amount.x)
 assert(clearedAt(amount.x, MONEY_Y), "the money was drawn onto the border line")
-assert(clearsOnRow(MONEY_Y) == 1, "the money knocked out more than its own run")
-assert(not clearedAt(amount.x - 8, MONEY_Y),
-  "the knock-out runs past the left of the amount")
+assert(clearsOnRow(MONEY_Y) == 1, "the money knocked out more than one run")
+assert(clearedAt(amount.x - 8, MONEY_Y),
+  "the rule runs up flush against the first digit")
+assert(clearedAt(MONEY_RIGHT_X, MONEY_Y),
+  "the corner glyph sits flush against the last digit")
+assert(not clearedAt(MONEY_RIGHT_X + 8, MONEY_Y),
+  "the money's knock-out reached the corner glyph")
 -- Nothing hangs below the item window any more: no second frame, no legend.
 assert(#below == 0, "something is still drawn below the item window")
 assert(#painted.boxes == 0, "the Bag drew a window of its own again")
@@ -459,8 +479,8 @@ for pocket = 1, 7 do
   assert(capped and capped.text == "¥999999",
     "pocket " .. pocket .. " painted the wrong money line")
   assert(#extra == 0, "pocket " .. pocket .. " drew below the item window")
-  -- Past x = 40 would run under the pocket arrows' column and off the frame.
-  assert(capped.x >= 40, "the money ran past the window's left edge: x = " .. capped.x)
+  -- Its clearance starts a column earlier, and x = 40 is the frame's own.
+  assert(capped.x >= 48, "the money ran past the window's left edge: x = " .. capped.x)
 end
 game.save.money = 1234
 ballsOpen.modernBag.pocket = 4
@@ -569,8 +589,15 @@ local function windowPaint(screen)
   end
   assert(title, "the window is not titled on its top border")
   assert(clearedAt(title.x, WIN_BORDER_Y), "the title was drawn onto the border line")
-  assert(not clearedAt(WIN_LEFT, WIN_BORDER_Y),
-    "the knock-out swallowed the border line left of the title")
+  -- A tile of clearance at each end, so the rule stops short of the letters.
+  local titleRight = title.x + (utf8.len(title.text) or #title.text) * 8
+  assert(clearedAt(title.x - 8, WIN_BORDER_Y),
+    "the rule runs up flush against the first letter of the title")
+  assert(clearedAt(titleRight, WIN_BORDER_Y),
+    "the rule restarts flush against the last letter of the title")
+  -- Never onto the corner glyphs, which are the columns at x = 0 and x = 152.
+  assert(not clearedAt(0, WIN_BORDER_Y) and not clearedAt(152, WIN_BORDER_Y),
+    "the title's knock-out rubbed out a corner glyph")
   -- Text is drawn black; every screen has to hand the colour back white or
   -- whatever draws next inherits the black. The no-data path used to escape
   -- through an early return that never did.
@@ -646,8 +673,20 @@ assert(hubText[1].text == "TM HM SEARCH", "the popup did not draw its title")
 local borderY = hubBox.ty * 8
 assert(hubText[1].y == borderY, "the title is not on the window's top border")
 assert(clearedAt(hubText[1].x, borderY), "the title was drawn onto the border line")
-assert(not clearedAt((hubBox.tx + 1) * 8 - 8, borderY),
-  "the knock-out swallowed the window's corner")
+
+-- A tile of clearance at each end, and never onto a corner glyph. The box is
+-- sized for it: a title wider than tw - 4 tiles would have nowhere to put its
+-- clearance and would run into the corner -- the same defect at the other end.
+local hubTitleRight = hubText[1].x + (utf8.len(hubText[1].text) or 0) * 8
+assert(clearedAt(hubText[1].x - 8, borderY),
+  "the rule runs up flush against the first letter of the popup title")
+assert(clearedAt(hubTitleRight, borderY),
+  "the rule restarts flush against the last letter of the popup title")
+assert(not clearedAt(hubBox.tx * 8, borderY)
+  and not clearedAt((hubBox.tx + hubBox.tw - 1) * 8, borderY),
+  "the popup title's knock-out rubbed out a corner glyph")
+assert((utf8.len(hubText[1].text) or 0) <= hubBox.tw - 4,
+  "the popup is too narrow for its own padded title")
 
 -- The options start on the first interior row, one per row, indented by the
 -- cursor column.
@@ -660,6 +699,37 @@ for i = 2, #hubText do
   assert(right <= (hubBox.tx + hubBox.tw - 1) * 8,
     ("popup row %q overruns the window"):format(hubText[i].text))
 end
+
+-- ITEM OPTIONS is the popup whose title, once padded, is wider than any of
+-- its option labels -- so it is the one that catches a box sized without
+-- counting the clearance.
+pressed.start = true
+bag:update(0)
+local optionsMenu = assert(stack:top(), "START did not open ITEM OPTIONS")
+local optionsBox, optionsText = popupPaint(optionsMenu)
+assert(optionsText[1].text == "ITEM OPTIONS", "wrong popup on top")
+assert((utf8.len(optionsText[1].text) or 0) <= optionsBox.tw - 4,
+  ("ITEM OPTIONS is %d tiles wide, too narrow for its padded title")
+    :format(optionsBox.tw))
+assert(clearedAt(optionsText[1].x - 8, optionsBox.ty * 8)
+  and not clearedAt(optionsBox.tx * 8, optionsBox.ty * 8),
+  "ITEM OPTIONS' title has no clearance, or ate a corner glyph")
+optionsMenu:close()
+
+-- Labels too wide for their window are trimmed by glyphs, not by bytes: a
+-- label can carry a multi-byte character -- POKe with the accent, the currency
+-- sign -- or a Gen 1 control code, and half of one of those is not a
+-- character. Byte-trimming a run of them leaves an invalid tail.
+hub.items[1].label = "A" .. ("\u{00e9}"):rep(30)
+local _, wideText = popupPaint(hub)
+local trimmed = wideText[2]
+assert(trimmed, "the popup drew no rows")
+assert(utf8.len(trimmed.text), "a label was trimmed mid-character: " .. trimmed.text)
+assert(utf8.len(trimmed.text) < 30, "the label was not trimmed to the window at all")
+local trimmedRight = trimmed.x + utf8.len(trimmed.text) * 8
+assert(trimmedRight <= (hubBox.tx + hubBox.tw - 1) * 8,
+  "the trimmed label still overruns the window")
+hub.opts.onChoose({ value = "reset" }, hub)
 
 -- The search keyboard. 1.1.1 drew it as a bare white page and laid the
 -- DEL/CLR/GO/EXIT row out on the same 16px pitch as the single-glyph letters,
@@ -731,6 +801,17 @@ for i, call in ipairs(letters) do
   assert(call.x == 16 + (i - 1) * 16, "letter " .. call.text .. " is off the cell pitch")
 end
 assert(#painted.codes == 1, "the keyboard should draw exactly one cursor")
+
+-- A title too wide for its window still cannot rub out a corner glyph: the
+-- clearance is clamped to the columns between them. A font mod with wider
+-- glyphs, or a translation, is how a title gets there.
+local realTitle = keyboard.title
+keyboard.title = ("W"):rep(20)
+resetPaint()
+keyboard:draw()
+assert(not clearedAt(0, 0) and not clearedAt(152, 0),
+  "an over-wide title rubbed out a corner glyph")
+keyboard.title = realTitle
 assert(painted.codes[1].x == 8 and painted.codes[1].y == 40,
   "the cursor is not in the column left of the first key")
 keyboard:close()

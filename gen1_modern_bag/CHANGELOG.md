@@ -28,6 +28,17 @@
   drawn straight onto the line would have it running through the letters. The
   pocket header knocks out one run per glyph group -- under each arrow and
   under the name -- so the line survives in the gaps between them.
+- Every border label knocks out a tile of clearance at each end. Knocking out
+  exactly the width of the text -- which is what `src/ui/Menu.lua` does with
+  its own title -- leaves the rule ending flush against the first glyph and
+  restarting flush against the last, which reads as the frame touching the
+  letters. The clearance is clamped so it can never rub out a corner glyph,
+  and a popup is sized for its title plus that clearance: a title wider than
+  `tw - 4` tiles would run into a corner, the same defect at the other end.
+- Labels too wide for their window are trimmed by glyphs rather than by bytes,
+  through the engine's own `Font.split`. A label can carry a multi-byte
+  character or a Gen 1 control code, and half of one of those is not a
+  character. A build without `Font.split` still trims the old way.
 - The money moved to the item window's bottom border, right-aligned under its
   bottom-right corner, instead of the little window 1.2.0 hung under that
   corner. There is no second frame on the Bag screen at all now.
