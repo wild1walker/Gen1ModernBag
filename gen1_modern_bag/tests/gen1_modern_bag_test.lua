@@ -137,6 +137,9 @@ package.preload["src.ui.Menu"] = function()
       if item.onSelect then item.onSelect() end
       return item
     end
+    -- The widget paints the frame, the rows and the cursor. A title is not
+    -- handed to it any more, so anything drawn here comes from the mod.
+    function self:draw() end
     return self
   end
   return M
@@ -317,10 +320,8 @@ bag.index = 2
 pressed.start = true
 bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
--- Padded, so Menu's exactly-the-title-wide knock-out leaves the rule a tile
--- clear of the letters at each end.
-assert(tools.opts.title == " ITEM OPTIONS ",
-  "wrong ITEM OPTIONS title: " .. tostring(tools.opts.title))
+-- No title on the item tools: four rows that name themselves do not need one.
+assert(tools.opts.title == nil, "the item tools grew a title again")
 assert(tools.items[1].label == "ADD FAVORITE")
 tools:choose(1)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
@@ -486,9 +487,9 @@ pressed.right = true
 ballsOpen:update(0)
 assert(ballsOpen.modernBag.pocket == 4, "right pocket switch failed")
 name = headerPaint(ballsOpen)
-assert(name and name.text == "TM HM",
+assert(name and name.text == "TM/HM",
   "the pocket header did not follow the pocket switch: " .. tostring(name and name.text))
-assert(ballsOpen.title == "TM HM",
+assert(ballsOpen.title == "TM/HM",
   "pocket title did not follow the pocket switch: " .. tostring(ballsOpen.title))
 
 -- The money is the header's twin, on the item window's other border. 1.1.1
@@ -713,32 +714,55 @@ stack:pop()
 pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search title")
+assert(hub.opts.title == nil, "the hub title was handed to Menu")
 assert(hub.items[1].label:find("NAME:", 1, true), "move-name filter missing")
 assert(hub.items[2].label:find("TYPE:", 1, true), "type filter missing")
 assert(hub.items[3].label:find("CLASS:", 1, true), "damage-class filter missing")
 assert(hub.items[4].label:find("SORT:", 1, true), "power sort missing")
 
 -- Menus this mod opens are src/ui/Menu.lua, the engine's own framed menu
--- widget. It draws the frame, the title on its top border and the cursor, so
--- what a test can check is what it was handed: the geometry asked for, the
--- padding on the title, and the rows.
+-- widget: it draws the frame, the rows, the cursor and the more-arrow. What a
+-- test can check is what it was handed -- the geometry asked for and the rows
+-- -- plus the title, which is drawn by the mod rather than handed over.
 local MENU_LABEL_MARGIN = 3   -- Menu grows tw to the widest label + 3
-local MENU_TITLE_START = 3    -- and starts the title a fixed three tiles in
 
 local function menuTiles(text) return utf8.len(text) or #text end
 
--- Menu knocks out exactly the title's width, so the rule would end flush
--- against the first and last letter. The space at each end is the clearance.
-local function assertPaddedTitle(menu, name)
-  local title = menu.opts.title
-  assert(title, name .. " was opened without a title")
-  assert(title == " " .. name .. " ",
-    ("%s's title is not padded for its border: %q"):format(name, title))
-  -- The title runs from tile tx+3, so it has to end before the far corner.
-  assert(menuTiles(title) <= menu.opts.tw - MENU_TITLE_START - 1,
-    ("%s is %d tiles wide, too narrow for its padded title")
+-- The title is not given to Menu: Menu would draw it at the border tile's own
+-- y and knock out exactly its width, putting ink on the frame's outer margin
+-- and ending the rule flush against the letters. It goes through the mod's own
+-- drawBorderLabel instead -- a pixel lower, a tile of clearance at each end.
+local function assertBorderTitle(menu, name)
+  assert(menu.opts.title == nil,
+    name .. "'s title was handed to Menu, which draws it on the margin")
+  resetPaint()
+  menu:draw()
+  local borderY = menu.opts.ty * 8
+  local title
+  for _, call in ipairs(painted.text) do
+    if call.y == borderY + WINDOW_EDGE then title = call end
+    assert(call.y ~= borderY,
+      ("%q sits on the frame's outer white margin"):format(call.text))
+  end
+  assert(title and title.text == name,
+    ("%s is not titled on its border: %s"):format(name, tostring(title and title.text)))
+  local right = title.x + menuTiles(title.text) * 8
+  assert(clearedAt(title.x - 8, borderY) and clearedAt(right, borderY),
+    name .. "'s title has no clearance from the rule")
+  assert(not clearedAt(menu.opts.tx * 8, borderY)
+    and not clearedAt((menu.opts.tx + menu.opts.tw - 1) * 8, borderY),
+    name .. "'s title rubbed out a corner glyph")
+  -- Which needs the width to have been asked for with the clearance counted.
+  assert(menuTiles(title.text) <= menu.opts.tw - 4,
+    ("%s is %d tiles wide, too narrow for its title plus clearance")
       :format(name, menu.opts.tw))
+end
+
+local function assertUntitled(menu, name)
+  assert(menu.opts.title == nil, name .. " was handed a title")
+  resetPaint()
+  menu:draw()
+  assert(#painted.text == 0, name .. " drew a title of its own")
 end
 
 -- And a label wider than the width asked for would grow the menu off the
@@ -754,8 +778,8 @@ local function assertFits(menu, name)
   end
 end
 
-assertPaddedTitle(hub, "TM HM SEARCH")
-assertFits(hub, "TM HM SEARCH")
+assertBorderTitle(hub, "TM/HM SEARCH")
+assertFits(hub, "TM/HM SEARCH")
 assert(#hub.items == 7, "the TM/HM hub is not seven rows")
 -- The rows that open a picker have to leave the hub standing under it.
 for i = 1, 4 do
@@ -764,12 +788,11 @@ end
 assert(not hub.items[5].keepOpen, "the RESULTS row should close the hub")
 assert(hub.items[7].onSelect == nil, "CANCEL should do nothing but close")
 
--- ITEM OPTIONS is the menu whose padded title is wider than any of its option
--- labels, so it is the one that catches a width asked for without counting it.
+-- The item tools carry no title at all.
 pressed.start = true
 bag:update(0)
 local optionsMenu = assert(stack:top(), "START did not open ITEM OPTIONS")
-assertPaddedTitle(optionsMenu, "ITEM OPTIONS")
+assertUntitled(optionsMenu, "ITEM OPTIONS")
 assertFits(optionsMenu, "ITEM OPTIONS")
 optionsMenu:close()
 
@@ -784,7 +807,7 @@ assert(stack:top() ~= hub, "the TYPE picker did not open")
 stack:top():close()
 assert(utf8.len(hub.items[1].label),
   "a label was trimmed mid-character: " .. hub.items[1].label)
-assertFits(hub, "TM HM SEARCH")
+assertFits(hub, "TM/HM SEARCH")
 liveFilters.query = ""
 hub:choose(2)
 stack:top():close()
@@ -919,7 +942,7 @@ for _ = 1, 7 do
   ringSeen[bag.title] = true
 end
 assert(not ringSeen.RESULTS, "the results page is in the ring before any search")
-assert(ringSeen.MEDICINE and ringSeen["TM HM"] and ringSeen.FAVORITES,
+assert(ringSeen.MEDICINE and ringSeen["TM/HM"] and ringSeen.FAVORITES,
   "stepping over the hidden page skipped a real pocket")
 
 bag.modernBag.pocket = 2

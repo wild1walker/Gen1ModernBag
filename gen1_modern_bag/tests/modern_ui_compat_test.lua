@@ -235,7 +235,7 @@ assert(stack:top() ~= info, "Move Information did not close")
 pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search hub")
+assert(hub.opts.title == nil, "the hub title should be drawn by the mod, not Menu")
 assert(hub.items[1].label:find("NAME:", 1, true), "NAME filter is not first")
 hub:choose(1)
 local nameSearch = assert(stack:top(), "move-name search did not open")

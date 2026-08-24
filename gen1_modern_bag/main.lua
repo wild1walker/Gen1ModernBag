@@ -16,7 +16,7 @@ local POCKETS = {
   { id = "favorites", label = "FAVORITES", virtual = true },
   { id = "medicine", label = "MEDICINE" },
   { id = "balls", label = "BALLS" },
-  { id = "machines", label = "TM HM" },
+  { id = "machines", label = "TM/HM" },
   { id = "battle", label = "BATTLE" },
   { id = "key", label = "KEY ITEMS" },
   { id = "other", label = "OTHER" },
@@ -1098,7 +1098,7 @@ function MachineNameSearch.new(game, initial, onDone)
   return setmetatable({
     screenId = MACHINE_NAME_SEARCH_SCREEN_ID,
     game = game,
-    title = "TM HM MOVE NAME",
+    title = "TM/HM MOVE NAME",
     query = table.concat(glyphs),
     glyphs = glyphs,
     maxLen = SEARCH_QUERY_LIMIT,
@@ -1186,26 +1186,23 @@ end
 
 -- Opening a Menu.
 --
--- Menu knocks out exactly the title's width for it, so the rule ends flush
--- against the first and last letter -- the frame appearing to touch them. A
--- space at each end is what buys the clearance, and it is added here at the
--- call site: a title is a catalog key elsewhere in the engine, and padding it
--- inside the string would make the padding part of the key.
+-- The title is not handed to Menu. Menu draws its own at the border tile's own
+-- y and knocks out exactly its width, which puts ink on the frame's outer
+-- white margin and ends the rule flush against the first and last letter. It
+-- is drawn here instead, through the same drawBorderLabel every other window
+-- title in this mod goes through: a pixel lower, with a tile of clearance
+-- knocked out at each end. Only `draw` is wrapped, so the frame, the rows, the
+-- cursor and the more-arrow all stay Menu's.
 --
 -- Menu grows tw to the widest label + 3 and never accounts for the title, so
--- the width has to be asked for. The title starts a fixed three tiles in, so
--- the padded title has to stay within tw - 4 or it runs into the top-right
--- corner glyph -- the same defect at the other end.
+-- the width still has to be asked for: the title plus its two clearance tiles
+-- has to fit between the corners, which is tw - 4.
 local MENU_LABEL_MARGIN = 3
 local MENU_TITLE_MARGIN = 4
 
 -- Four rows of options, opened clear of the pocket header on the item
 -- window's top border. Menu works its own height out from the rows.
 local ITEM_TOOLS_TY = 6
-
-local function menuTitle(title)
-  return " " .. tostring(title or "") .. " "
-end
 
 local function menuTiles(Font, text)
   return math.ceil(Font.width(text) / 8)
@@ -1217,9 +1214,9 @@ local function menuWidth(Font, title, items)
     local tiles = menuTiles(Font, tostring(item.label or ""))
     if tiles > widest then widest = tiles end
   end
-  return math.min(SCREEN_TILES_W, math.max(
-    widest + MENU_LABEL_MARGIN,
-    menuTiles(Font, menuTitle(title)) + MENU_TITLE_MARGIN))
+  local forTitle = title and (menuTiles(Font, title) + MENU_TITLE_MARGIN) or 0
+  return math.min(SCREEN_TILES_W,
+    math.max(widest + MENU_LABEL_MARGIN, forTitle))
 end
 
 -- Labels are held to the width that was asked for: Menu sizes itself from the
@@ -1231,21 +1228,38 @@ local function fitMenuLabels(Font, items, tw)
   end
 end
 
+-- A title is optional: a menu whose rows say what it is does not need one.
+local function labelMenuBorder(menu, title, tx, ty, tw)
+  local baseDraw = menu.draw
+  if type(baseDraw) ~= "function" then return menu end
+  function menu:draw(...)
+    local result = baseDraw(self, ...)
+    local Font = require("src.render.Font")
+    drawBorderLabel(Font, fitLabel(Font, title, (tw - 4) * 8), tx, ty, tw)
+    love.graphics.setColor(1, 1, 1, 1)
+    return result
+  end
+  return menu
+end
+
 local function openMenu(game, title, items, opts)
   opts = opts or {}
   local Font = require("src.render.Font")
   local Menu = require("src.ui.Menu")
   local tw = opts.tw or menuWidth(Font, title, items)
+  local tx = SCREEN_TILES_W - tw   -- against the right edge, as Gen 1 does
+  local ty = opts.ty or 0
   fitMenuLabels(Font, items, tw)
   local menu = Menu.new(game, items, {
-    -- Against the right edge, the corner Gen 1 opens a menu into.
-    tx = SCREEN_TILES_W - tw,
-    ty = opts.ty or 0,
+    tx = tx,
+    ty = ty,
     tw = tw,
-    title = menuTitle(title),
     maxVisible = opts.maxVisible,
     onCancel = opts.onCancel,
   })
+  if title and title ~= "" then
+    labelMenuBorder(menu, title, tx, ty, tw)
+  end
   game.stack:push(menu)
   return menu
 end
@@ -1387,7 +1401,7 @@ local function openMachineSearch(bagList)
     {
       label = "", keepOpen = true,
       onSelect = picker(function()
-        openMenu(game, "SORT TM HM",
+        openMenu(game, "SORT TM/HM",
           choices({ "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" },
             function(v) return MACHINE_SORT_LABELS[v] end,
             function(v)
@@ -1418,7 +1432,7 @@ local function openMachineSearch(bagList)
     { label = "" },
   }
 
-  hub = openMenu(game, "TM HM SEARCH", items,
+  hub = openMenu(game, "TM/HM SEARCH", items,
     { tw = MACHINE_HUB_TW, ty = MACHINE_HUB_TY })
   updateMachineHub(hub, bagList)
   return hub
@@ -1472,10 +1486,12 @@ local function openItemTools(item, list)
     pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
   end
 
+  -- No title: four rows that name themselves do not need one.
+  --
   -- Menu closes itself around onSelect unless the row asks to stay open, so
   -- none of these close it by hand. Nothing here depends on which side of
   -- onSelect that happens.
-  openMenu(list.game, "ITEM OPTIONS", {
+  openMenu(list.game, nil, {
     {
       label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE",
       onSelect = function()

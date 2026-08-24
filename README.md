@@ -167,15 +167,20 @@ and it owns the cursor, the scrolling and the input. The mod hands it rows of
 leaves the menu standing — which is how the TM/HM hub survives underneath the
 picker it opens.
 
-Two things Menu asks of its caller. It knocks out exactly the title's width,
-so its rule ends flush against the first and last letter; every title here is
-padded with a space at each end, applied at the call site rather than inside
-the string, because a title is a catalog key elsewhere in the engine and
-padding inside would make the padding part of the key. And it grows `tw` to the
-widest label + 3 while never accounting for the title, so the width is asked
-for explicitly — `#Font.split(title) <= tw - 4`, or the padded title runs into
-the top-right corner glyph — and labels are trimmed to it, since a twelve-glyph
-TM/HM query would otherwise grow the hub off the screen.
+Titles are not handed to Menu. Menu draws its own at the border tile's own `y`
+and knocks out exactly its width, which puts ink on the frame's outer white
+margin and ends the rule flush against the first and last letter — so they go
+through the same `drawBorderLabel` as every other title here instead, a pixel
+lower and with a tile of clearance knocked out at each end. Only `draw` is
+wrapped, so the frame, the rows, the cursor and the more-arrow all stay Menu's.
+A menu whose rows name themselves takes no title at all: **ITEM OPTIONS** is
+four such rows.
+
+Menu still grows `tw` to the widest label + 3 while never accounting for the
+title, so the width is asked for explicitly — the title plus its two clearance
+tiles has to fit between the corners, which is `tw - 4` — and labels are
+trimmed to it, since a twelve-glyph TM/HM query would otherwise grow the hub
+off the screen.
 
 The search keyboard was the worst of them. It had no frame either; its three
 header lines sat on a 12px pitch the 8px font does not land on; and its last
@@ -197,7 +202,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.4.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.4.1.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -250,13 +255,13 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 
 ### Favorites and pinned items
 
-Press **START** on a highlighted item to open **ITEM OPTIONS**:
+Press **START** on a highlighted item to open the item options:
 
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
 - **MOVE ITEM** — manual reordering; press START on the destination to finish.
-- **CANCEL** — closes ITEM OPTIONS.
+- **CANCEL** — closes the menu.
 
 Row markers show item status: `F` favorite, `P` pinned, `PF` both.
 
@@ -358,13 +363,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.4.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.4.1 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.4.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.4.1.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
