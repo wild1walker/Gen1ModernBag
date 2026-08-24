@@ -17,6 +17,41 @@ package.preload["src.core.Sound"] = function()
   return { play = function() end }
 end
 
+package.preload["src.render.Font"] = function()
+  local Font = {}
+  function Font.split(text)
+    local out = {}
+    for _, cp in utf8.codes(tostring(text)) do out[#out + 1] = utf8.char(cp) end
+    return out
+  end
+  function Font.width(text) return #Font.split(text) * 8 end
+  function Font.draw() end
+  function Font.drawCode() end
+  function Font.drawBox() end
+  return Font
+end
+
+-- src/ui/Menu.lua, the engine's framed menu widget.
+package.preload["src.ui.Menu"] = function()
+  local M = {}
+  function M.new(game, items, opts)
+    local self = { game = game, items = items or {}, opts = opts or {} }
+    self.title = self.opts.title
+    function self:close()
+      if game.stack:top() == self then game.stack:pop() end
+    end
+    function self:choose(i)
+      local item = self.items[i]
+      assert(item, "no menu row " .. tostring(i))
+      if not item.keepOpen then self:close() end
+      if item.onSelect then item.onSelect() end
+      return item
+    end
+    return self
+  end
+  return M
+end
+
 package.preload["src.ui.ListMenu"] = function()
   local ListMenu = {}
   function ListMenu.new(game, title, items, opts)
@@ -200,9 +235,9 @@ assert(stack:top() ~= info, "Move Information did not close")
 pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.title == "TM HM SEARCH", "wrong TM/HM search hub")
-assert(hub.items[1].value == "name", "NAME filter is not first")
-hub.opts.onChoose(hub.items[1], hub)
+assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search hub")
+assert(hub.items[1].label:find("NAME:", 1, true), "NAME filter is not first")
+hub:choose(1)
 local nameSearch = assert(stack:top(), "move-name search did not open")
 assert(nameSearch.screenId == "ModernBagNicknameMachineSearch",
   "move-name search screen id missing")

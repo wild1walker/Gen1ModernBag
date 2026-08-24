@@ -89,12 +89,36 @@ doing — Gen1 Modern UI and this mod's compatibility contract read it — but i
 does not put anything on screen. Gen1ModernBag 1.1.0 shipped a header that way
 and it was invisible; 1.1.1 draws it.
 
-It goes on the empty row at the top of the item window. `LIST_MENU_BOX` is
-tiles 4,2–19,12, so the box interior starts at y = 24 and the first item name
-is drawn at y = 32: the row at y = 24 is unused and sits on the box's own white
-fill. The interior spans x = 40 to x = 152 — fourteen 8px columns — and the
-arrows take the first and the last, leaving twelve for the name. The longest
-pocket labels (`FAVORITES`, `KEY ITEMS`) are nine.
+It goes on the item window's own top border, which is where Gen 1 titles a
+window: the border line runs up to the label and continues after it.
+`LIST_MENU_BOX` is tiles 4,2–19,12, so that border is the row at y = 16 and its
+corners are the columns at x = 32 and x = 152. The fourteen columns between
+them are the label's, and the arrows take the first and the last, leaving
+twelve for the name. The longest pocket labels (`FAVORITES`, `KEY ITEMS`) are
+nine.
+
+Drawing onto a border needs the line knocked out from under the label first.
+Glyphs are drawn as a mask — `Font.draw` paints them in whatever colour is set,
+which is how black text lands on a box's white fill — so a label drawn straight
+onto the line would have it running through the letters. The header knocks out
+one run per glyph group, under the Left arrow, under the name and under the
+Right arrow, so the line survives in the gaps between them.
+
+Each run is a tile wider than the glyphs it covers, at both ends. Knocking out
+exactly the width of the text — which is what `src/ui/Menu.lua` does with its
+own title — leaves the rule ending flush against the first glyph and restarting
+flush against the last, and that reads as the frame touching the letters. The
+label does not move; the clearance is bought in tiles either side of it, and is
+clamped so it can never rub out a corner glyph. The same applies to every
+window this mod titles, so a popup is sized for its title *plus* that
+clearance: a title wider than `tw - 4` tiles has nowhere to put it and would
+run into a corner — the same defect at the other end. The arrows are the
+exception: they sit against the corners already, so clearance on their outer
+side would be the thing that rubs one out.
+
+Before 1.3.0 the header sat on the empty interior row below the border instead:
+the box interior starts at y = 24 and the first item name is drawn at y = 32, so
+the row at y = 24 is unused.
 
 The arrows are the engine's cursor glyph, `Theme.cursor`, and the Left one is
 that glyph mirrored about its own cell. Gen 1 has no left-pointing arrow —
@@ -117,27 +141,39 @@ bottom text box, `TEXT_BOX` at tiles 0,12–19,17 — a full-width white bar und
 the item window. It read as a second screen rather than as part of the Bag, and
 most of what it carried was a legend for two buttons.
 
-1.2.0 drops the legend and the bar with it. What is left is the amount, in a
-window sized to it and tucked under the item window's bottom-right corner. It
-cannot go inside that window: `LIST_MENU_BOX` has nine interior rows and the
-Bag spends every one of them, on the pocket header plus four items drawn
-name-over-quantity. The window starts on tile row 13 rather than sharing row 12
-the way the full-width box did — sharing puts two frames on one tile, and a box
-that also owns tile 19,12 draws its own top-right corner where the item
-window's bottom-right corner belongs. A row lower, the two borders meet without
-either being redrawn. The geometry is the `MONEY_*` constants in
+1.2.0 dropped the legend and the bar with it, and gave the amount a little
+window of its own tucked under the item window's bottom-right corner. 1.3.0
+puts it on that window's bottom border instead, right-aligned, the same way the
+pocket name sits on the top one — so there is no second frame at all and the
+amount lands exactly where the bottom-right of the item window is.
+`LIST_MENU_BOX` ends on tile row 12, so that border is the row at y = 96, and
+its last column before the corner ends at x = 152 — the column the Right arrow
+occupies on the top border. The geometry is the `MONEY_*` constants in
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua).
 
 The menus this mod opens on top of the Bag had a related problem. `ITEM
-OPTIONS`, the TM/HM filter hub and its pickers are plain `ListMenu`s, and
+OPTIONS`, the TM/HM filter hub and its pickers were plain `ListMenu`s, and
 `ListMenu`'s full-screen branch fills all 160×144 white, draws the title and
 the rows, and paints no frame at all — four options were covering the game with
-an undecorated white page. They are drawn as framed windows over whatever
-opened them instead, sized to their own contents and anchored to the
-bottom-right corner: frame, title row, blank row, then one row per option. Only
-`draw` is replaced, so movement, wrapping, scrolling and `onChoose` stay the
-engine's and the screen is still a real `ListMenu` for Gen1 Modern UI to
-recognise.
+an undecorated white page.
+
+They are now [`src/ui/Menu.lua`](https://github.com/FAFF0x/gen1recomp), the
+engine's own framed menu widget, which is what was wanted all along: it draws
+the frame, the title on its top border and the more-arrow on the bottom one,
+and it owns the cursor, the scrolling and the input. The mod hands it rows of
+`{ label, onSelect }` and a corner to open into, and a row marked `keepOpen`
+leaves the menu standing — which is how the TM/HM hub survives underneath the
+picker it opens.
+
+Two things Menu asks of its caller. It knocks out exactly the title's width,
+so its rule ends flush against the first and last letter; every title here is
+padded with a space at each end, applied at the call site rather than inside
+the string, because a title is a catalog key elsewhere in the engine and
+padding inside would make the padding part of the key. And it grows `tw` to the
+widest label + 3 while never accounting for the title, so the width is asked
+for explicitly — `#Font.split(title) <= tw - 4`, or the padded title runs into
+the top-right corner glyph — and labels are trimmed to it, since a twelve-glyph
+TM/HM query would otherwise grow the hub off the screen.
 
 The search keyboard was the worst of them. It had no frame either; its three
 header lines sat on a 12px pitch the 8px font does not land on; and its last
@@ -159,7 +195,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.2.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.3.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -196,8 +232,8 @@ arrows always apply.
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
 
-Your money sits in a small window under the item window's bottom-right corner.
-Nothing else is drawn below the list: **SELECT** opens the open pocket's search
+Your money sits on the item window's bottom border, right-aligned under its
+bottom-right corner. Nothing else is drawn below the list: **SELECT** opens the open pocket's search
 and **START** opens **ITEM OPTIONS**, and neither is spelled out on screen.
 
 ### Opening pocket and fast scrolling
@@ -248,9 +284,20 @@ Press **SELECT** from any pocket except TM/HM.
 - **START**, the Modern UI **SEARCH** button, or **GO** shows all matches.
 
 Search covers every pocket and matches both the displayed name and the internal
-item identifier. An empty query lists the whole Bag alphabetically. Results show
-the `F`, `P` and `PF` markers, and choosing one returns to the correct pocket
-with that item selected.
+item identifier. An empty query lists the whole Bag alphabetically.
+
+The matches do not open a page of their own. They are handed back to the Bag,
+which grows a **RESULTS** pocket for them and puts you on it — so they are read
+in the item window with the pocket header, the counts and the `F` / `P` / `PF`
+markers, like every other pocket, and every Bag control works on them. Before
+1.3.0 they were listed on a separate full-screen `ListMenu` with no frame.
+
+RESULTS only exists while a search is loaded into it. Left and Right step over
+it before the first search of a Bag session, it is rebuilt from the search
+rather than held as a snapshot — so its counts follow the Bag as items are used
+up — it is never what **LAST USED** reopens the Bag on, and it is gone the next
+time the Bag opens. It is not a pocket an item can be filed in, and
+`exports.pockets()` does not list it.
 
 ### TM/HM search and move information
 
@@ -258,6 +305,7 @@ The **TM HM** pocket has its own SELECT menu instead of the general search. It
 can search by the name of the move in the machine, filter by elemental type,
 filter by **PHYSICAL** / **SPECIAL** / **STATUS** damage class, sort by machine
 number, move name, highest power or lowest power, and combine those filters.
+**SHOW RESULTS** fills the same RESULTS pocket the general search does.
 
 Generation I uses a type-based physical/special split: Normal, Fighting, Flying,
 Poison, Ground, Rock, Bug and Ghost are PHYSICAL; Fire, Water, Grass, Electric,
@@ -306,13 +354,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.2.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.3.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.2.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.3.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees

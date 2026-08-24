@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.3.0
+
+- **Search results are a page of the Bag now, not a page of their own.** A
+  search hands its matches back to the Bag, which grows a **RESULTS** pocket
+  for them and puts you on it, so they are read in the item window with the
+  pocket header, the counts and the row markers -- and every Bag control works
+  on them. They used to be listed on a separate full-screen `ListMenu` with no
+  frame.
+- RESULTS only exists while a search is loaded into it: Left and Right step
+  over it before the first search, it is never what LAST USED reopens the Bag
+  on, and it is gone the next time the Bag opens. It is not a pocket an item
+  can be filed in, and `exports.pockets()` does not list it.
+- The page is rebuilt from the search rather than held as a snapshot, so its
+  counts follow the Bag as items are used up and reacquired.
+- The TM/HM filters' **SHOW RESULTS** fills the same page, which retires the
+  last of the undecorated result lists.
+- Y/I opens move information wherever a machine is reached -- the results page
+  and FAVORITES included -- rather than only in the TM/HM pocket.
+- **Window titles moved onto the window's own top border**, which is where Gen
+  1 titles a box: the border line runs up to the label and continues after it.
+  This is the pocket header on the item window, and the titles of ITEM OPTIONS,
+  the TM/HM filters and their pickers, the search keyboard and MOVE
+  INFORMATION.
+- Drawing onto a border needs the line knocked out from under the label first.
+  Glyphs are drawn as a mask, painted in whatever colour is set, so a label
+  drawn straight onto the line would have it running through the letters. The
+  pocket header knocks out one run per glyph group -- under each arrow and
+  under the name -- so the line survives in the gaps between them.
+- Every border label knocks out a tile of clearance at each end. Knocking out
+  exactly the width of the text -- which is what `src/ui/Menu.lua` does with
+  its own title -- leaves the rule ending flush against the first glyph and
+  restarting flush against the last, which reads as the frame touching the
+  letters. The clearance is clamped so it can never rub out a corner glyph,
+  and a popup is sized for its title plus that clearance: a title wider than
+  `tw - 4` tiles would run into a corner, the same defect at the other end.
+- Labels too wide for their window are trimmed by glyphs rather than by bytes,
+  through the engine's own `Font.split`. A label can carry a multi-byte
+  character or a Gen 1 control code, and half of one of those is not a
+  character. A build without `Font.split` still trims the old way.
+- The money moved to the item window's bottom border, right-aligned under its
+  bottom-right corner, instead of the little window 1.2.0 hung under that
+  corner. There is no second frame on the Bag screen at all now.
+- Popup menus lost the title row and the blank row under it, so a four-option
+  menu is a four-option window.
+- MOVE INFORMATION gained a row from the same change and spends it on the
+  effect, which now wraps over four lines instead of three.
+
+---
+
 ## 1.2.0
 
 - **SELECT now searches and START now opens ITEM OPTIONS.** The two were the
@@ -19,13 +68,20 @@
 - The TM/HM sort mode is no longer printed on the Bag. It is a row in the TM/HM
   tools, `SORT: NUMBER`, and is still published as `machineSortLabel`.
 - **ITEM OPTIONS is a window over the Bag instead of a full-screen page.** It
-  and the TM/HM filter hub, MOVE TYPE, DAMAGE CLASS and SORT TM HM are plain
+  and the TM/HM filter hub, MOVE TYPE, DAMAGE CLASS and SORT TM HM were plain
   `ListMenu`s, and `ListMenu`'s full-screen branch fills all 160x144 white and
   paints no frame at all: four options were covering the game with an
-  undecorated white page. They are now framed windows sized to their own
-  contents and anchored to the bottom-right corner. Only `draw` is replaced, so
-  movement, scrolling and choosing stay the engine's and the screens are still
-  real `ListMenu`s for Gen1 Modern UI to recognise.
+  undecorated white page. They are now `src/ui/Menu.lua`, the engine's own
+  framed menu widget -- it draws the frame, the title on its top border and the
+  more-arrow on the bottom one, and owns the cursor, the scrolling and the
+  input. The mod hands it rows of `{ label, onSelect }` and a corner.
+- Menu knocks out exactly its title's width, so its rule would end flush
+  against the first and last letter. Every title is padded with a space at each
+  end, at the call site rather than inside the string: a title is a catalog key
+  elsewhere in the engine, and padding inside would make the padding part of
+  the key. Menu also grows `tw` to the widest label + 3 and never accounts for
+  the title, so the width is asked for explicitly and labels are trimmed to it
+  -- a twelve-glyph TM/HM query would otherwise grow the hub off the screen.
 - **Rebuilt the search keyboard.** It had no frame; its header lines sat on a
   12px pitch the 8px font does not land on; and its `DEL` / `CLR` / `GO` /
   `EXIT` row was laid out on the same 16px pitch as the single-glyph letters,

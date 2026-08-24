@@ -20,7 +20,26 @@ end
 -- the Left arrow is the cursor glyph mirrored about its own cell, and a
 -- no-op translate/scale would report it wherever it was asked to draw
 -- instead of where it lands.
-local painted = { text = {}, codes = {}, boxes = {} }
+local painted = { text = {}, codes = {}, boxes = {}, clears = {} }
+local function resetPaint()
+  painted.text, painted.codes, painted.boxes, painted.clears = {}, {}, {}, {}
+end
+
+-- A label on a border row is only legible because the line is knocked out
+-- under it first, so the knock-outs have to be observable too.
+local function clearedAt(x, y)
+  for _, c in ipairs(painted.clears) do
+    if y >= c.y and y < c.y + c.h and x >= c.x and x < c.x + c.w then return true end
+  end
+  return false
+end
+local function clearsOnRow(y)
+  local n = 0
+  for _, c in ipairs(painted.clears) do
+    if c.y == y then n = n + 1 end
+  end
+  return n
+end
 local transform = { tx = 0, sx = 1 }
 local transformStack = {}
 
@@ -39,7 +58,9 @@ function love.graphics.setColor(r, g, b, a) drawColor = { r, g, b, a } end
 local function drawColorIsWhite()
   return drawColor[1] == 1 and drawColor[2] == 1 and drawColor[3] == 1
 end
-function love.graphics.rectangle() end
+function love.graphics.rectangle(_, x, y, w, h)
+  painted.clears[#painted.clears + 1] = { x = x, y = y, w = w, h = h }
+end
 
 -- The screen column an 8px cell drawn at local `x` covers; a mirrored cell
 -- grows to the left of its origin.
@@ -61,9 +82,14 @@ package.preload["src.render.Font"] = function()
   function Font.drawBox(tx, ty, tw, th)
     painted.boxes[#painted.boxes + 1] = { tx = tx, ty = ty, tw = tw, th = th }
   end
+  -- The engine's own glyph split: one entry per drawn tile.
+  function Font.split(text)
+    local out = {}
+    for _, cp in utf8.codes(tostring(text)) do out[#out + 1] = utf8.char(cp) end
+    return out
+  end
   function Font.width(text)
-    text = tostring(text)
-    return (utf8.len(text) or #text) * 8
+    return #Font.split(text) * 8
   end
   return Font
 end
@@ -89,6 +115,31 @@ end
 
 package.preload["src.core.Sound"] = function()
   return { play = function() end }
+end
+
+-- src/ui/Menu.lua, the engine's framed menu widget. It draws its own frame,
+-- title and cursor and owns the input, so a test can only see what it was
+-- handed. Modelled on the stub the shipped mods that use it carry.
+package.preload["src.ui.Menu"] = function()
+  local M = {}
+  function M.new(game, items, opts)
+    local self = { game = game, items = items or {}, opts = opts or {} }
+    self.title = self.opts.title
+    function self:close()
+      if game.stack:top() == self then game.stack:pop() end
+    end
+    -- Menu closes itself around onSelect unless the item asks to stay open.
+    -- Nothing here depends on which side of onSelect that happens.
+    function self:choose(i)
+      local item = self.items[i]
+      assert(item, "no menu row " .. tostring(i))
+      if not item.keepOpen then self:close() end
+      if item.onSelect then item.onSelect() end
+      return item
+    end
+    return self
+  end
+  return M
 end
 
 package.preload["src.ui.ListMenu"] = function()
@@ -266,10 +317,12 @@ bag.index = 2
 pressed.start = true
 bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
-assert(tools.title == "ITEM OPTIONS")
-assert(tools.isOpaque == false, "ITEM OPTIONS must be a window over the Bag, not a page")
+-- Padded, so Menu's exactly-the-title-wide knock-out leaves the rule a tile
+-- clear of the letters at each end.
+assert(tools.opts.title == " ITEM OPTIONS ",
+  "wrong ITEM OPTIONS title: " .. tostring(tools.opts.title))
 assert(tools.items[1].label == "ADD FAVORITE")
-tools.opts.onChoose(tools.items[1], tools)
+tools:choose(1)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
 assert(mod.exports.isFavorite("POTION"), "favorite export returned false")
 
@@ -290,7 +343,7 @@ pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "pin tools did not open")
 assert(tools.items[2].label == "PIN TO TOP")
-tools.opts.onChoose(tools.items[2], tools)
+tools:choose(2)
 assert(saved.pinned_items[1] == "POTION", "pin was not persisted")
 assert(mod.exports.isPinned("POTION"), "pin export returned false")
 bag:update(0)
@@ -327,16 +380,22 @@ assert(ballsOpen.items[1].value == "POKE_BALL", "BALLS did not open to the corre
 -- name only reaches the screen if the Bag's own draw puts it there: assert on
 -- what is painted, not just on the title field a previous release set and
 -- nothing ever drew.
+--
+-- It sits on the item window's own top border, which is where Gen 1 titles a
+-- window. LIST_MENU_BOX is tiles 4,2-19,12, so that border is the row at
+-- y = 16.
+local ITEM_BOX_TOP_Y = 16
+
 local function headerPaint(list)
-  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  resetPaint()
   list:draw()
   local name
   for _, call in ipairs(painted.text) do
-    if call.y == 24 then name = call end
+    if call.y == ITEM_BOX_TOP_Y then name = call end
   end
   local arrows = {}
   for _, call in ipairs(painted.codes) do
-    if call.y == 24 then arrows[#arrows + 1] = call end
+    if call.y == ITEM_BOX_TOP_Y then arrows[#arrows + 1] = call end
   end
   table.sort(arrows, function(a, b) return a.x < b.x end)
   return name, arrows
@@ -357,6 +416,30 @@ assert(arrows[1].x == 40 and arrows[1].mirrored,
 assert(arrows[2].x == 144 and not arrows[2].mirrored,
   "the Right arrow is not in column 144: x = " .. tostring(arrows[2].x))
 assert(arrows[1].code == arrows[2].code, "the two arrows should be one glyph")
+
+-- The border line is knocked out under each glyph group and survives in the
+-- gaps between them, so the line runs up to the label and continues after it.
+-- Without the knock-out the line would strike through the letters: glyphs are
+-- drawn as a mask, in whatever colour is set.
+assert(clearsOnRow(ITEM_BOX_TOP_Y) == 3,
+  "expected one knock-out per glyph group, got " .. clearsOnRow(ITEM_BOX_TOP_Y))
+assert(clearedAt(40, ITEM_BOX_TOP_Y), "the Left arrow was drawn onto the border line")
+assert(clearedAt(72, ITEM_BOX_TOP_Y), "the pocket name was drawn onto the border line")
+assert(clearedAt(144, ITEM_BOX_TOP_Y), "the Right arrow was drawn onto the border line")
+-- The knock-out runs a tile past each end of the name, so the rule stops
+-- short of the letters instead of ending flush against them. Knocking out
+-- exactly the text's width is what src/ui/Menu.lua does with its own title,
+-- and it is what makes the frame look like it is touching the letters.
+local nameRight = name.x + (utf8.len(name.text) or #name.text) * 8
+assert(clearedAt(name.x - 8, ITEM_BOX_TOP_Y),
+  "the rule runs up flush against the first letter of the pocket name")
+assert(clearedAt(nameRight, ITEM_BOX_TOP_Y),
+  "the rule restarts flush against the last letter of the pocket name")
+-- And no further: the rule still survives either side of that clearance.
+assert(not clearedAt(name.x - 16, ITEM_BOX_TOP_Y),
+  "the name's knock-out ran past its own clearance")
+assert(not clearedAt(nameRight + 8, ITEM_BOX_TOP_Y),
+  "the name's knock-out ran past its own clearance")
 assert(ballsOpen.title == "BALLS",
   "wrong pocket title: " .. tostring(ballsOpen.title))
 
@@ -370,64 +453,61 @@ assert(name and name.text == "TM HM",
 assert(ballsOpen.title == "TM HM",
   "pocket title did not follow the pocket switch: " .. tostring(ballsOpen.title))
 
--- The money window is the header's twin: the item-box path paints no footer
--- either, so the amount only reaches the screen because the Bag draws it.
+-- The money is the header's twin, on the item window's other border. 1.1.1
+-- drew it in the standard bottom text box -- a full-width white bar carrying
+-- the amount and a legend for START and SELECT; 1.2.0 dropped the legend and
+-- gave the amount a little window of its own hanging under the corner. It is
+-- now on the bottom border itself, right-aligned, so there is no second frame
+-- at all.
 --
--- 1.1.1 drew it in the standard bottom text box -- a full-width white bar
--- carrying the amount and a legend for START and SELECT. The legend is gone
--- and the bar with it; what is left is a window sized to the amount, tucked
--- under the item window's bottom-right corner.
-local ITEM_BOX_RIGHT_TX = 19   -- LIST_MENU_BOX is tiles 4,2-19,12
-local ITEM_BOX_BOTTOM_TY = 12
-local MONEY_TEXT_Y = 112
+-- LIST_MENU_BOX ends on tile row 12, so that border is the row at y = 96, and
+-- its last column before the corner ends at x = 152.
+local MONEY_Y = 96
+local MONEY_RIGHT_X = 144
 
 local function moneyPaint(list)
-  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  resetPaint()
   list:draw()
-  local box
-  for _, b in ipairs(painted.boxes) do
-    if b.ty > ITEM_BOX_BOTTOM_TY then box = b end
-  end
+  local amount
   local below = {}
   for _, call in ipairs(painted.text) do
-    if call.y >= 104 then below[#below + 1] = call end
+    if call.y == MONEY_Y then amount = call end
+    if call.y > MONEY_Y then below[#below + 1] = call end
   end
-  table.sort(below, function(a, b) return a.y < b.y end)
-  return box, below
+  return amount, below
 end
 
-local box, below = moneyPaint(ballsOpen)
-assert(box, "the money window was not painted")
-assert(box.th == 3, "the money window holds one interior row, not " .. (box.th - 2))
-assert(#below == 1, "the money window should carry the amount and nothing else, painted " .. #below)
-assert(below[1].text == "¥1234", "wrong money line: " .. below[1].text)
--- Sized to the amount: five glyphs plus the two frame columns.
-assert(box.tw == 7, "the money window is not sized to the amount: tw = " .. box.tw)
-assert(box.tx + box.tw - 1 == ITEM_BOX_RIGHT_TX,
-  "the money window is not flush with the item window's right edge: tx = " .. box.tx)
-assert(below[1].x == (box.tx + 1) * 8 and below[1].y == MONEY_TEXT_Y,
-  "the amount is not on the window's interior row")
--- It starts below the item window rather than redrawing its bottom border:
--- sharing tile 19,12 would replace that window's corner with this one's.
-assert(box.ty == ITEM_BOX_BOTTOM_TY + 1,
-  "the money window overlaps the item window's frame: ty = " .. box.ty)
+local amount, below = moneyPaint(ballsOpen)
+assert(amount, "the money was not painted")
+assert(amount.text == "¥1234", "wrong money line: " .. amount.text)
+-- Right-aligned, stopping one column short of the corner so the tile between
+-- the two is the amount's clearance.
+assert(amount.x + (utf8.len(amount.text) or #amount.text) * 8 == MONEY_RIGHT_X,
+  "the money is not right-aligned in the border: x = " .. amount.x)
+assert(clearedAt(amount.x, MONEY_Y), "the money was drawn onto the border line")
+assert(clearsOnRow(MONEY_Y) == 1, "the money knocked out more than one run")
+assert(clearedAt(amount.x - 8, MONEY_Y),
+  "the rule runs up flush against the first digit")
+assert(clearedAt(MONEY_RIGHT_X, MONEY_Y),
+  "the corner glyph sits flush against the last digit")
+assert(not clearedAt(MONEY_RIGHT_X + 8, MONEY_Y),
+  "the money's knock-out reached the corner glyph")
+-- Nothing hangs below the item window any more: no second frame, no legend.
+assert(#below == 0, "something is still drawn below the item window")
+assert(#painted.boxes == 0, "the Bag drew a window of its own again")
 
--- Every pocket paints the amount, and the window stays on screen at the Gen 1
+-- Every pocket paints the amount, and it stays inside the window at the Gen 1
 -- money cap, which is the widest it can get.
 game.save.money = 999999
 for pocket = 1, 7 do
   ballsOpen.modernBag.pocket = pocket
   ballsOpen:update(0)
-  local capped, lines = moneyPaint(ballsOpen)
-  assert(capped, "pocket " .. pocket .. " painted no money window")
-  assert(#lines == 1 and lines[1].text == "¥999999",
+  local capped, extra = moneyPaint(ballsOpen)
+  assert(capped and capped.text == "¥999999",
     "pocket " .. pocket .. " painted the wrong money line")
-  assert(capped.tx >= 0 and capped.tx + capped.tw <= 20,
-    "the money window ran off the screen: tx = " .. capped.tx .. " tw = " .. capped.tw)
-  -- Columns, not bytes: the ¥ is one glyph and two bytes.
-  local cols = utf8.len(lines[1].text) or #lines[1].text
-  assert(cols <= capped.tw - 2,
-    ("%q is %d columns, over the %d the window holds"):format(lines[1].text, cols, capped.tw - 2))
+  assert(#extra == 0, "pocket " .. pocket .. " drew below the item window")
+  -- Its clearance starts a column earlier, and x = 40 is the frame's own.
+  assert(capped.x >= 48, "the money ran past the window's left edge: x = " .. capped.x)
 end
 game.save.money = 1234
 ballsOpen.modernBag.pocket = 4
@@ -439,9 +519,9 @@ ballsOpen.modernBag.machineSort = "POWER_DESC"
 ballsOpen:update(0)
 assert(ballsOpen.modernBag.machineSortLabel == "POWER DESC",
   "wrong sort label: " .. tostring(ballsOpen.modernBag.machineSortLabel))
-local _, sortLines = moneyPaint(ballsOpen)
-assert(#sortLines == 1 and sortLines[1].text:find("¥", 1, true),
-  "the TM/HM pocket painted more than the amount below the item window")
+local sortAmount, sortExtra = moneyPaint(ballsOpen)
+assert(sortAmount and sortAmount.text:find("¥", 1, true) and #sortExtra == 0,
+  "the TM/HM pocket painted more than the amount on the window's borders")
 ballsOpen.modernBag.machineSort = "NUMBER"
 ballsOpen:update(0)
 assert(saved.last_pocket == "machines", "last-used pocket was not persisted")
@@ -502,7 +582,7 @@ bag.index = swordsIndex
 pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "machine item tools did not open")
-tools.opts.onChoose(tools.items[2], tools)
+tools:choose(2)
 bag:update(0)
 assert(bag.items[1].value == "TM_SWORDS_DANCE", "pinned machine must stay above power sorting")
 
@@ -514,43 +594,63 @@ assert(infoScreen.info and infoScreen.info.moveId == "SWORDS_DANCE", "move infor
 
 -- Move Information was the last screen drawn as a bare white page: no frame,
 -- and eleven lines on a 14px pitch the 8px font does not land on. It is now
--- the same framed window as the search keyboard, everything on the grid.
+-- the same framed window as the search keyboard, titled on its top border,
+-- everything on the grid.
 --
--- A 20x18 window's interior is columns 8..152 and rows 8..128.
+-- A 20x18 window's top border is the row at y = 0; its interior is columns
+-- 8..152 and rows 8..128.
 local WIN_LEFT, WIN_RIGHT, WIN_TOP, WIN_BOTTOM = 8, 152, 8, 128
+local WIN_BORDER_Y = 0
 
 local function windowPaint(screen)
-  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  resetPaint()
   screen:draw()
   assert(#painted.boxes == 1, "the screen should be one framed window")
   local frame = painted.boxes[1]
   assert(frame.tx == 0 and frame.ty == 0 and frame.tw == 20 and frame.th == 18,
     "the window does not frame the screen")
+  -- The title is on that border, and the line is knocked out under it.
+  local title
+  for _, call in ipairs(painted.text) do
+    if call.y == WIN_BORDER_Y then title = call end
+  end
+  assert(title, "the window is not titled on its top border")
+  assert(clearedAt(title.x, WIN_BORDER_Y), "the title was drawn onto the border line")
+  -- A tile of clearance at each end, so the rule stops short of the letters.
+  local titleRight = title.x + (utf8.len(title.text) or #title.text) * 8
+  assert(clearedAt(title.x - 8, WIN_BORDER_Y),
+    "the rule runs up flush against the first letter of the title")
+  assert(clearedAt(titleRight, WIN_BORDER_Y),
+    "the rule restarts flush against the last letter of the title")
+  -- Never onto the corner glyphs, which are the columns at x = 0 and x = 152.
+  assert(not clearedAt(0, WIN_BORDER_Y) and not clearedAt(152, WIN_BORDER_Y),
+    "the title's knock-out rubbed out a corner glyph")
   -- Text is drawn black; every screen has to hand the colour back white or
   -- whatever draws next inherits the black. The no-data path used to escape
   -- through an early return that never did.
   assert(drawColorIsWhite(), "the screen left the draw colour set to its text colour")
-  local rows = {}
+  local rows = { [WIN_BORDER_Y] = title.text }
   for _, call in ipairs(painted.text) do
     assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
-    assert(call.y >= WIN_TOP and call.y <= WIN_BOTTOM,
+    assert(call.y == WIN_BORDER_Y or (call.y >= WIN_TOP and call.y <= WIN_BOTTOM),
       ("%q is outside the window at y = %d"):format(call.text, call.y))
     assert(call.x >= WIN_LEFT, ("%q starts left of the window"):format(call.text))
     local right = call.x + (utf8.len(call.text) or #call.text) * 8
     assert(right <= WIN_RIGHT, ("%q overruns the window"):format(call.text))
-    assert(rows[call.y] == nil, ("two lines share row %d"):format(call.y))
+    assert(call.y == WIN_BORDER_Y or rows[call.y] == nil,
+      ("two lines share row %d"):format(call.y))
     rows[call.y] = call.text
   end
   return rows
 end
 
 local infoRows = windowPaint(infoScreen)
-assert(infoRows[8] == "MOVE INFORMATION", "the title is not on the first interior row")
-assert(infoRows[24] == "TM03  SWORDS DANCE", "wrong machine line: " .. tostring(infoRows[24]))
-assert(infoRows[40] == "TYPE: NORMAL" and infoRows[48] == "CLASS: STATUS"
-  and infoRows[56] == "POWER: --" and infoRows[64] == "ACCURACY: 100%"
-  and infoRows[72] == "PP: 30", "the stat block is wrong")
-assert(infoRows[88] == "EFFECT:" and infoRows[96] == "ATTACK UP2", "the effect block is wrong")
+assert(infoRows[0] == "MOVE INFORMATION", "wrong window title: " .. tostring(infoRows[0]))
+assert(infoRows[8] == "TM03  SWORDS DANCE", "wrong machine line: " .. tostring(infoRows[8]))
+assert(infoRows[24] == "TYPE: NORMAL" and infoRows[32] == "CLASS: STATUS"
+  and infoRows[40] == "POWER: --" and infoRows[48] == "ACCURACY: 100%"
+  and infoRows[56] == "PP: 30", "the stat block is wrong")
+assert(infoRows[72] == "EFFECT:" and infoRows[80] == "ATTACK UP2", "the effect block is wrong")
 assert(infoRows[128] == "Y/I OR A/B BACK", "the way out is not on the last interior row")
 
 -- A machine with no move data takes the same window, and hands the colour
@@ -558,7 +658,7 @@ assert(infoRows[128] == "Y/I OR A/B BACK", "the way out is not on the last inter
 local savedInfo = infoScreen.info
 infoScreen.info = nil
 local blankRows = windowPaint(infoScreen)
-assert(blankRows[24] == "NO MOVE DATA", "the no-data screen lost its message")
+assert(blankRows[8] == "NO MOVE DATA", "the no-data screen lost its message")
 assert(blankRows[128] == "Y/I OR A/B BACK", "the no-data screen lost its way out")
 infoScreen.info = savedInfo
 
@@ -569,42 +669,81 @@ stack:pop()
 pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.title == "TM HM SEARCH", "wrong TM/HM search title")
+assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search title")
+assert(hub.items[1].label:find("NAME:", 1, true), "move-name filter missing")
 assert(hub.items[2].label:find("TYPE:", 1, true), "type filter missing")
 assert(hub.items[3].label:find("CLASS:", 1, true), "damage-class filter missing")
 assert(hub.items[4].label:find("SORT:", 1, true), "power sort missing")
 
--- Menus this mod opens are framed windows over the Bag, not the undecorated
--- white full-screen page ListMenu paints for itself. They are sized to their
--- own contents and anchored to the bottom-right corner.
-local function popupPaint(menu)
-  painted.text, painted.codes, painted.boxes = {}, {}, {}
-  menu:draw()
-  return painted.boxes[1], painted.text, painted.codes
+-- Menus this mod opens are src/ui/Menu.lua, the engine's own framed menu
+-- widget. It draws the frame, the title on its top border and the cursor, so
+-- what a test can check is what it was handed: the geometry asked for, the
+-- padding on the title, and the rows.
+local MENU_LABEL_MARGIN = 3   -- Menu grows tw to the widest label + 3
+local MENU_TITLE_START = 3    -- and starts the title a fixed three tiles in
+
+local function menuTiles(text) return utf8.len(text) or #text end
+
+-- Menu knocks out exactly the title's width, so the rule would end flush
+-- against the first and last letter. The space at each end is the clearance.
+local function assertPaddedTitle(menu, name)
+  local title = menu.opts.title
+  assert(title, name .. " was opened without a title")
+  assert(title == " " .. name .. " ",
+    ("%s's title is not padded for its border: %q"):format(name, title))
+  -- The title runs from tile tx+3, so it has to end before the far corner.
+  assert(menuTiles(title) <= menu.opts.tw - MENU_TITLE_START - 1,
+    ("%s is %d tiles wide, too narrow for its padded title")
+      :format(name, menu.opts.tw))
 end
 
-assert(hub.isOpaque == false, "a popup menu must let the Bag draw underneath it")
-local hubBox, hubText = popupPaint(hub)
-assert(hubBox, "the TM/HM hub painted no window")
-assert(hubBox.tx + hubBox.tw == 20 and hubBox.ty + hubBox.th == 18,
-  "the popup is not anchored to the bottom-right corner")
-assert(hubBox.tw < 20 or hubBox.th < 18, "the popup still covers the whole screen")
--- Frame, title row, blank row, then one row per option.
-assert(hubBox.th == #hub.items + 4,
-  "the window is not sized to its options: th = " .. hubBox.th)
-assert(hubText[1].text == "TM HM SEARCH", "the popup did not draw its title")
--- The title is on the first interior row; the options start two rows below it,
--- one per row, indented by the cursor column.
-local titleY = (hubBox.ty + 1) * 8
-assert(hubText[1].y == titleY, "the title is not on the first interior row")
-assert(hubText[2].y == titleY + 16, "the options do not start below a blank row")
-assert(hubText[2].x == hubText[1].x + 8, "the options are not indented for the cursor")
-for i = 2, #hubText do
-  assert(hubText[i].y == titleY + 16 + (i - 2) * 8, "popup row " .. i .. " is off the grid")
-  local right = hubText[i].x + (utf8.len(hubText[i].text) or #hubText[i].text) * 8
-  assert(right <= (hubBox.tx + hubBox.tw - 1) * 8,
-    ("popup row %q overruns the window"):format(hubText[i].text))
+-- And a label wider than the width asked for would grow the menu off the
+-- screen, because Menu sizes itself from the widest label.
+local function assertFits(menu, name)
+  assert(menu.opts.tw <= 20 and menu.opts.tx >= 0
+    and menu.opts.tx + menu.opts.tw == 20,
+    name .. " is not anchored inside the right edge of the screen")
+  for i, row in ipairs(menu.items) do
+    assert(menuTiles(row.label) <= menu.opts.tw - MENU_LABEL_MARGIN,
+      ("%s row %d (%q) would grow the menu past the width it asked for")
+        :format(name, i, row.label))
+  end
 end
+
+assertPaddedTitle(hub, "TM HM SEARCH")
+assertFits(hub, "TM HM SEARCH")
+assert(#hub.items == 7, "the TM/HM hub is not seven rows")
+-- The rows that open a picker have to leave the hub standing under it.
+for i = 1, 4 do
+  assert(hub.items[i].keepOpen, "TM/HM hub row " .. i .. " closes the hub behind its picker")
+end
+assert(not hub.items[5].keepOpen, "the RESULTS row should close the hub")
+assert(hub.items[7].onSelect == nil, "CANCEL should do nothing but close")
+
+-- ITEM OPTIONS is the menu whose padded title is wider than any of its option
+-- labels, so it is the one that catches a width asked for without counting it.
+pressed.start = true
+bag:update(0)
+local optionsMenu = assert(stack:top(), "START did not open ITEM OPTIONS")
+assertPaddedTitle(optionsMenu, "ITEM OPTIONS")
+assertFits(optionsMenu, "ITEM OPTIONS")
+optionsMenu:close()
+
+-- Labels too wide for the menu are trimmed by glyphs, not by bytes: a label
+-- can carry a multi-byte character -- POKe with the accent, the currency sign
+-- -- or a Gen 1 control code, and half of one of those is not a character.
+-- The NAME row is the one that grows, because it carries the query.
+local liveFilters = bag.modernBag.machineFilters
+liveFilters.query = ("\u{00e9}"):rep(30)
+hub:choose(2)                       -- opens the TYPE picker, and relabels
+assert(stack:top() ~= hub, "the TYPE picker did not open")
+stack:top():close()
+assert(utf8.len(hub.items[1].label),
+  "a label was trimmed mid-character: " .. hub.items[1].label)
+assertFits(hub, "TM HM SEARCH")
+liveFilters.query = ""
+hub:choose(2)
+stack:top():close()
 
 -- The search keyboard. 1.1.1 drew it as a bare white page and laid the
 -- DEL/CLR/GO/EXIT row out on the same 16px pitch as the single-glyph letters,
@@ -616,23 +755,33 @@ bag:update(0)
 local keyboard = assert(stack:top(), "SELECT did not open Quick Search")
 assert(keyboard.screenId == "ModernBagNicknameSearch", "SELECT opened the wrong screen")
 
-painted.text, painted.codes, painted.boxes = {}, {}, {}
+resetPaint()
 keyboard:draw()
 assert(#painted.boxes == 1, "the keyboard should be one framed window")
 local kb = painted.boxes[1]
 assert(kb.tx == 0 and kb.ty == 0 and kb.tw == 20 and kb.th == 18,
   "the keyboard window does not frame the screen")
 
--- A 20x18 window's interior is columns 8..152 and rows 8..128.
+-- A 20x18 window's top border is the row at y = 0; its interior is columns
+-- 8..152 and rows 8..128.
 local KB_LEFT, KB_RIGHT, KB_TOP, KB_BOTTOM = 8, 152, 8, 128
 local function textRight(call)
   return call.x + (utf8.len(call.text) or #call.text) * 8
 end
 
+-- The keyboard is titled on its border like every other window here.
+local kbTitle
+for _, call in ipairs(painted.text) do
+  if call.y == 0 then kbTitle = call end
+end
+assert(kbTitle and kbTitle.text == "QUICK SEARCH",
+  "the keyboard is not titled on its top border: " .. tostring(kbTitle and kbTitle.text))
+assert(clearedAt(kbTitle.x, 0), "the keyboard title was drawn onto the border line")
+
 local byRow = {}
 for _, call in ipairs(painted.text) do
   assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
-  assert(call.y >= KB_TOP and call.y <= KB_BOTTOM,
+  assert(call.y == 0 or (call.y >= KB_TOP and call.y <= KB_BOTTOM),
     ("%q is outside the window at y = %d"):format(call.text, call.y))
   assert(call.x >= KB_LEFT, ("%q starts left of the window"):format(call.text))
   assert(textRight(call) <= KB_RIGHT, ("%q overruns the window"):format(call.text))
@@ -666,6 +815,17 @@ for i, call in ipairs(letters) do
   assert(call.x == 16 + (i - 1) * 16, "letter " .. call.text .. " is off the cell pitch")
 end
 assert(#painted.codes == 1, "the keyboard should draw exactly one cursor")
+
+-- A title too wide for its window still cannot rub out a corner glyph: the
+-- clearance is clamped to the columns between them. A font mod with wider
+-- glyphs, or a translation, is how a title gets there.
+local realTitle = keyboard.title
+keyboard.title = ("W"):rep(20)
+resetPaint()
+keyboard:draw()
+assert(not clearedAt(0, 0) and not clearedAt(152, 0),
+  "an over-wide title rubbed out a corner glyph")
+keyboard.title = realTitle
 assert(painted.codes[1].x == 8 and painted.codes[1].y == 40,
   "the cursor is not in the column left of the first key")
 keyboard:close()
@@ -674,3 +834,101 @@ print("gen1_modern_bag_search_keyboard_test: ok")
 
 print("gen1_modern_bag_tm_search_test: ok")
 
+-- The results page.
+--
+-- A search used to push a ListMenu of its own -- one more undecorated
+-- full-screen page. It now hands its matches to the Bag, which grows a
+-- RESULTS page for them, so they are read in the item window with the pocket
+-- header, the counts and the row markers like everything else.
+while stack:top() do stack:pop() end
+bag.modernBag.pocket = 2
+bag:update(0)
+
+-- Before a search there is no such page, and Left/Right cannot reach it.
+local ringSeen = {}
+for _ = 1, 7 do
+  pressed.right = true
+  bag:update(0)
+  ringSeen[bag.title] = true
+end
+assert(not ringSeen.RESULTS, "the results page is in the ring before any search")
+assert(ringSeen.MEDICINE and ringSeen["TM HM"] and ringSeen.FAVORITES,
+  "stepping over the hidden page skipped a real pocket")
+
+bag.modernBag.pocket = 2
+bag:update(0)
+pressed.select = true
+bag:update(0)
+local search = assert(stack:top(), "SELECT did not open Quick Search")
+search.glyphs = { "P", "O", "T" }
+pressed.start = true
+search:update(0)
+
+assert(stack:top() ~= search, "the keyboard stayed open behind the results")
+assert(stack:top() == nil, "the search pushed a page of its own instead of using the Bag")
+assert(bag.title == "RESULTS", "the Bag is not on the results page: " .. tostring(bag.title))
+assert(#bag.items == 1 and bag.items[1].value == "POTION",
+  "the results page does not hold the matches")
+assert(bag.items[1].right:find("x1", 1, true), "the results page lost the count")
+assert(bag.items[1].right:find("PF", 1, true), "the results page lost the row markers")
+
+-- Now it is in the ring, and Left comes back to it.
+pressed.right = true
+bag:update(0)
+assert(bag.title ~= "RESULTS", "Right did not leave the results page")
+pressed.left = true
+bag:update(0)
+assert(bag.title == "RESULTS", "Left did not come back to the results page")
+
+-- It is rebuilt from the search rather than held as a snapshot, so it follows
+-- the Bag as items are used up and reacquired.
+game.save.inventory.POTION = nil
+bag:update(0)
+assert(#bag.items == 0, "the results page kept an item that had left the Bag")
+-- Reacquiring goes through Bag.add, which the mod patches to put the id back
+-- in the Bag order itself.
+require("src.inventory.Bag").add(game.save, "POTION", 1)
+bag:update(0)
+assert(#bag.items == 1, "the results page did not pick the item back up")
+
+-- LAST USED never reopens the Bag on it: it is empty by then.
+assert(saved.last_pocket ~= "results", "a transient page was saved as the last pocket")
+local reopenedAfterSearch = BagMenu.new(game, {})
+assert(reopenedAfterSearch.title ~= "RESULTS", "a reopened Bag came back on the results page")
+assert(reopenedAfterSearch.modernBag.results == nil, "the results survived reopening the Bag")
+
+-- And it is not one of the pockets an item can be filed in.
+local ringPockets = mod.exports.pockets()
+assert(#ringPockets == 7, "the results page leaked into the pocket export")
+for _, entry in ipairs(ringPockets) do
+  assert(entry.id ~= "results", "the results page leaked into the pocket export")
+end
+
+-- The TM/HM filters fill the same page instead of a list of their own.
+bag.modernBag.pocket = 4
+bag:update(0)
+pressed.select = true
+bag:update(0)
+local filters = assert(stack:top(), "the TM/HM hub did not open")
+local showRowIndex
+for i, row in ipairs(filters.items) do
+  if row.label:find("RESULTS", 1, true) then showRowIndex = i end
+end
+assert(showRowIndex, "the RESULTS row is missing from the TM/HM hub")
+filters:choose(showRowIndex)
+assert(stack:top() == nil, "the TM/HM filters pushed a page of their own")
+assert(bag.title == "RESULTS", "the TM/HM filters did not fill the results page")
+assert(#bag.items == 4, "wrong TM/HM result count: " .. #bag.items)
+for _, row in ipairs(bag.items) do
+  assert(row.modernMachine, "a TM/HM result lost its machine data")
+end
+
+-- Y/I reads a machine wherever it is reached, not only in the TM/HM pocket,
+-- so it still answers on the results page.
+pressed.gen1_modern_bag_move_info = true
+bag:update(0)
+local resultInfo = assert(stack:top(), "Y/I did not open move information from the results")
+assert(resultInfo.screenId == "ModernBagMoveInfo", "Y/I opened the wrong screen")
+stack:pop()
+
+print("gen1_modern_bag_results_page_test: ok")
