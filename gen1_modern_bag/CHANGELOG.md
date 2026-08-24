@@ -1,25 +1,42 @@
 # Changelog
 
+## 1.9.1
+
+- Corrects the 1.9.0 release notes, which described an earlier design of this
+  change -- `Z-A` and `MOST FIRST` orders, and a Bag filed once on open -- none
+  of which shipped. The mod itself is unchanged from 1.9.0; the section below
+  is what 1.9.0 actually does.
+
+---
+
 ## 1.9.0
 
-- **The sort options apply to the whole Bag, not just to machines.** `A-Z`,
-  `Z-A` and `MOST FIRST` are offered on every pocket. The machine orders --
-  now `TM/HM NUMBER`, `POWER HIGH` and `POWER LOW` -- are offered only on a
-  pocket that holds a machine. Up to 1.8.0 the list was the machine orders plus
-  `NAME`, so on any other pocket the only choice was the order the Bag was
-  already in, which is why SORT looked like it only worked on TM/HM.
+- **Every tab has its own order, and stays in it.** Choosing one is a setting
+  for that tab, saved and kept until it is changed again -- not a one-off
+  rearrangement. Up to 1.8.0 there was a single ordering carried over from the
+  TM/HM search, which is why SORT appeared to work only on TM/HM: everywhere
+  else the only choice was the order the Bag was already in.
+- The orders are **A-Z**, **QUANTITY** and **CUSTOM**, offered on every tab.
+  A tab holding a machine is also offered **TM/HM NUMBER**, **POWER HIGH** and
+  **POWER LOW**.
+- `A-Z` and `QUANTITY` are worked out from the items every time the rows are
+  built, so they hold as the Bag changes rather than decaying. `CUSTOM` is the
+  order you arranged by hand, and is the only one the Bag stores.
 - `A-Z` sorts a machine by its move rather than by `TM24`.
-- **What you arrange now survives closing the Bag.** The whole order was being
-  re-sorted alphabetically every time the Bag opened, which undid every manual
-  move and every one-shot SORT -- so no ordering you chose ever lasted. Opening
-  the Bag only drops what you no longer carry.
-- The Bag is still filed once, the first time this version opens it, so an
-  existing save arrives sorted. After that the order is yours.
-- Something newly acquired is appended, which puts it at the bottom of its own
-  pocket rather than at the end of the Bag.
-- Pinning no longer re-sorts the Bag. Pinned rows float to the top of their
-  pocket when the rows are drawn, so the order underneath does not need
-  rewriting for it.
+- **MOVE ITEM puts the tab into CUSTOM**, freezing what is on screen as the
+  starting point, so nothing jumps when you begin arranging and the pocket is
+  not re-ordered out from under the move on the next redraw.
+- Switching to `CUSTOM` from the sort menu does the same, so the hand-arranged
+  order starts from the one you were just looking at.
+- The results page keeps its own order too, but is not offered `CUSTOM`: there
+  is nothing to arrange on a page rebuilt from the query every time.
+- **Nothing is re-sorted when the Bag opens.** The whole order used to be
+  rewritten alphabetically on every open, which undid every arrangement. A-Z
+  is now a mode rather than something done to the order, so a Bag that has
+  never been sorted looks exactly as it did while the order underneath is left
+  alone.
+- Pinning no longer re-sorts the Bag. Pinned rows lead their tab whatever the
+  mode says, worked out when the rows are drawn.
 
 ---
 
