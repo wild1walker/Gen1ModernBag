@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.1
+
+- Border labels are drawn a pixel lower, so they stay off the frame's outer
+  white margin. That margin runs around the whole window outside the rule, and
+  on a top border it is the border tile's first pixel row; Gen 1 glyphs ink
+  rows 0 to 6 of their cell, so a label drawn at the tile's own y put ink on
+  it. This is the pocket header and its arrows on the item window, and the
+  titles of the search keyboard and MOVE INFORMATION.
+- The money is unchanged: it sits on a bottom border, whose margin is the
+  tile's last pixel row -- the row the glyphs already leave empty.
+- The knock-out under each label still covers the whole border tile, so the
+  rule is taken out from under the label as before.
+
+Pop-up menu titles are drawn by `src/ui/Menu.lua` itself, at the tile's y, so
+this shift does not reach them.
+
+---
+
 ## 1.3.0
 
 - **Search results are a page of the Bag now, not a page of their own.** A

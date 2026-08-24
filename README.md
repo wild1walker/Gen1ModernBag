@@ -104,6 +104,15 @@ onto the line would have it running through the letters. The header knocks out
 one run per glyph group, under the Left arrow, under the name and under the
 Right arrow, so the line survives in the gaps between them.
 
+The label is also drawn a pixel lower than the tile it sits on. The frame
+carries a one-pixel white margin around the whole window, outside its rule, and
+on a top border that margin is the border tile's first pixel row; Gen 1 glyphs
+ink rows 0 to 6 of their cell and leave the last blank, so a label drawn at the
+tile's own y puts ink on the margin. A pixel down lands it between the margin
+and the rule. A bottom border needs no shift — its margin is the tile's last
+pixel row, which is the row the glyphs already leave empty, so the money stays
+where it is.
+
 Each run is a tile wider than the glyphs it covers, at both ends. Knocking out
 exactly the width of the text — which is what `src/ui/Menu.lua` does with its
 own title — leaves the rule ending flush against the first glyph and restarting
@@ -195,7 +204,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.3.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.3.1.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -354,13 +363,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.3.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.3.1 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.3.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.3.1.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees

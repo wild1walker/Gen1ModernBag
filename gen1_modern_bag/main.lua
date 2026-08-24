@@ -104,6 +104,15 @@ local HEADER_NAME_WIDTH = HEADER_RIGHT_X - HEADER_NAME_X
 -- clearance at each end is what buys the gap; the label itself does not move.
 local BORDER_LABEL_PAD = 8
 
+-- The frame carries a one-pixel white margin around the whole window, outside
+-- its rule, and on a top border that margin is the border tile's first pixel
+-- row. Gen 1 glyphs ink rows 0 to 6 of their cell and leave the last blank, so
+-- a label drawn at the tile's own y puts ink on that margin: a top-border
+-- label is drawn one pixel lower, which lands it between the margin and the
+-- rule. A bottom border needs no such shift -- its margin is the tile's last
+-- pixel row, which is the row the glyphs already leave empty.
+local WINDOW_EDGE = 1
+
 local function clearBorderRun(x, y, width)
   if width <= 0 then return end
   love.graphics.setColor(1, 1, 1, 1)
@@ -125,12 +134,14 @@ local function borderLabelX(Font, text, tx, tw)
   return (tx + 1) * 8 + math.floor(slack / 16) * 8
 end
 
--- Label a box on its top border row: knock the line out, then draw.
+-- Label a box on its top border row: knock the line out, then draw a pixel
+-- lower, clear of the frame's outer margin. The knock-out stays on the tile,
+-- so it still takes the whole rule out from under the label.
 local function drawBorderLabel(Font, text, tx, ty, tw)
   local x = borderLabelX(Font, text, tx, tw)
   clearLabelRun(x, ty * 8, Font.width(text), tx, tw)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(text, x, ty * 8)
+  Font.draw(text, x, ty * 8 + WINDOW_EDGE)
   return x
 end
 
@@ -203,10 +214,12 @@ local function drawPocketHeader(list)
     Font.width(label) + BORDER_LABEL_PAD * 2)
   clearBorderRun(HEADER_RIGHT_X, HEADER_Y, 8)
 
+  -- Drawn a pixel below the tile, clear of the frame's outer white margin.
+  local textY = HEADER_Y + WINDOW_EDGE
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(label, nameX, HEADER_Y)
-  drawMirroredCode(Font, Theme.cursor, HEADER_LEFT_X, HEADER_Y)
-  Font.drawCode(Theme.cursor, HEADER_RIGHT_X, HEADER_Y)
+  Font.draw(label, nameX, textY)
+  drawMirroredCode(Font, Theme.cursor, HEADER_LEFT_X, textY)
+  Font.drawCode(Theme.cursor, HEADER_RIGHT_X, textY)
   love.graphics.setColor(1, 1, 1, 1)
 end
 

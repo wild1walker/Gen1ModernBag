@@ -384,25 +384,38 @@ assert(ballsOpen.items[1].value == "POKE_BALL", "BALLS did not open to the corre
 -- It sits on the item window's own top border, which is where Gen 1 titles a
 -- window. LIST_MENU_BOX is tiles 4,2-19,12, so that border is the row at
 -- y = 16.
+-- The frame's outer white margin is that tile's first pixel row, and Gen 1
+-- glyphs ink rows 0 to 6 of their cell, so the label is drawn a pixel lower to
+-- stay off it. The knock-out stays on the tile.
 local ITEM_BOX_TOP_Y = 16
+local WINDOW_EDGE = 1
+local HEADER_TEXT_Y = ITEM_BOX_TOP_Y + WINDOW_EDGE
 
 local function headerPaint(list)
   resetPaint()
   list:draw()
   local name
   for _, call in ipairs(painted.text) do
-    if call.y == ITEM_BOX_TOP_Y then name = call end
+    if call.y == HEADER_TEXT_Y then name = call end
   end
   local arrows = {}
   for _, call in ipairs(painted.codes) do
-    if call.y == ITEM_BOX_TOP_Y then arrows[#arrows + 1] = call end
+    if call.y == HEADER_TEXT_Y then arrows[#arrows + 1] = call end
   end
   table.sort(arrows, function(a, b) return a.x < b.x end)
   return name, arrows
 end
 
 local name, arrows = headerPaint(ballsOpen)
-assert(name, "the pocket header painted no name")
+assert(name, "the pocket header painted no name on the border, a pixel down")
+-- Nothing may sit on the margin itself.
+for _, call in ipairs(painted.text) do
+  assert(call.y ~= ITEM_BOX_TOP_Y,
+    ("%q sits on the frame's outer white margin"):format(call.text))
+end
+for _, call in ipairs(painted.codes) do
+  assert(call.y ~= ITEM_BOX_TOP_Y, "an arrow sits on the frame's outer white margin")
+end
 assert(name.text == "BALLS", "wrong pocket name: " .. tostring(name.text))
 -- Centred on the 8px grid inside the item box: 40 is the left arrow's column,
 -- 144 the right arrow's, and the name is centred in the twelve between them.
@@ -484,6 +497,9 @@ assert(amount.text == "¥1234", "wrong money line: " .. amount.text)
 -- the two is the amount's clearance.
 assert(amount.x + (utf8.len(amount.text) or #amount.text) * 8 == MONEY_RIGHT_X,
   "the money is not right-aligned in the border: x = " .. amount.x)
+-- No shift on a bottom border: its margin is the tile's last pixel row, which
+-- is the row Gen 1 glyphs already leave empty.
+assert(amount.y == MONEY_Y, "the money was shifted off its border row")
 assert(clearedAt(amount.x, MONEY_Y), "the money was drawn onto the border line")
 assert(clearsOnRow(MONEY_Y) == 1, "the money knocked out more than one run")
 assert(clearedAt(amount.x - 8, MONEY_Y),
@@ -612,9 +628,9 @@ local function windowPaint(screen)
   -- The title is on that border, and the line is knocked out under it.
   local title
   for _, call in ipairs(painted.text) do
-    if call.y == WIN_BORDER_Y then title = call end
+    if call.y == WIN_BORDER_Y + WINDOW_EDGE then title = call end
   end
-  assert(title, "the window is not titled on its top border")
+  assert(title, "the window is not titled on its top border, a pixel down")
   assert(clearedAt(title.x, WIN_BORDER_Y), "the title was drawn onto the border line")
   -- A tile of clearance at each end, so the rule stops short of the letters.
   local titleRight = title.x + (utf8.len(title.text) or #title.text) * 8
@@ -631,14 +647,17 @@ local function windowPaint(screen)
   assert(drawColorIsWhite(), "the screen left the draw colour set to its text colour")
   local rows = { [WIN_BORDER_Y] = title.text }
   for _, call in ipairs(painted.text) do
-    assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
-    assert(call.y == WIN_BORDER_Y or (call.y >= WIN_TOP and call.y <= WIN_BOTTOM),
+    -- The border label is the one line deliberately off the grid, by the pixel
+    -- that keeps it clear of the frame's margin.
+    local onBorder = call.y == WIN_BORDER_Y + WINDOW_EDGE
+    assert(onBorder or call.y % 8 == 0,
+      ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
+    assert(onBorder or (call.y >= WIN_TOP and call.y <= WIN_BOTTOM),
       ("%q is outside the window at y = %d"):format(call.text, call.y))
     assert(call.x >= WIN_LEFT, ("%q starts left of the window"):format(call.text))
     local right = call.x + (utf8.len(call.text) or #call.text) * 8
     assert(right <= WIN_RIGHT, ("%q overruns the window"):format(call.text))
-    assert(call.y == WIN_BORDER_Y or rows[call.y] == nil,
-      ("two lines share row %d"):format(call.y))
+    assert(onBorder or rows[call.y] == nil, ("two lines share row %d"):format(call.y))
     rows[call.y] = call.text
   end
   return rows
@@ -769,19 +788,25 @@ local function textRight(call)
   return call.x + (utf8.len(call.text) or #call.text) * 8
 end
 
--- The keyboard is titled on its border like every other window here.
+-- The keyboard is titled on its border like every other window here, a pixel
+-- down so it clears the frame's outer white margin.
 local kbTitle
 for _, call in ipairs(painted.text) do
-  if call.y == 0 then kbTitle = call end
+  if call.y == WINDOW_EDGE then kbTitle = call end
 end
 assert(kbTitle and kbTitle.text == "QUICK SEARCH",
   "the keyboard is not titled on its top border: " .. tostring(kbTitle and kbTitle.text))
 assert(clearedAt(kbTitle.x, 0), "the keyboard title was drawn onto the border line")
+for _, call in ipairs(painted.text) do
+  assert(call.y ~= 0, ("%q sits on the frame's outer white margin"):format(call.text))
+end
 
 local byRow = {}
 for _, call in ipairs(painted.text) do
-  assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
-  assert(call.y == 0 or (call.y >= KB_TOP and call.y <= KB_BOTTOM),
+  local onBorder = call.y == WINDOW_EDGE
+  assert(onBorder or call.y % 8 == 0,
+    ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
+  assert(onBorder or (call.y >= KB_TOP and call.y <= KB_BOTTOM),
     ("%q is outside the window at y = %d"):format(call.text, call.y))
   assert(call.x >= KB_LEFT, ("%q starts left of the window"):format(call.text))
   assert(textRight(call) <= KB_RIGHT, ("%q overruns the window"):format(call.text))
@@ -825,6 +850,10 @@ resetPaint()
 keyboard:draw()
 assert(not clearedAt(0, 0) and not clearedAt(152, 0),
   "an over-wide title rubbed out a corner glyph")
+-- Still a pixel clear of the margin, however wide it got.
+for _, call in ipairs(painted.text) do
+  assert(call.y ~= 0, "an over-wide title sat on the frame's outer white margin")
+end
 keyboard.title = realTitle
 assert(painted.codes[1].x == 8 and painted.codes[1].y == 40,
   "the cursor is not in the column left of the first key")
