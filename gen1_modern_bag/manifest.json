@@ -19,5 +19,6 @@
   "conflicts": [
     "modern_bag"
   ],
-  "description": "Gen1ModernBag: modern inventory pockets with configurable opening tab, hold-to-fast-scroll, Favorites, pinned items, unlimited capacity, touch-friendly keyboard search, TM/HM tools, corrected machine-label width, and optional Gen1 Modern UI presentation."
+  "description": "Gen1ModernBag: modern inventory pockets with configurable opening tab, hold-to-fast-scroll, Favorites, pinned items, unlimited capacity, touch-friendly keyboard search, TM/HM tools, corrected machine-label width, and optional Gen1 Modern UI presentation.",
+  "github": "wild1walker/Gen1ModernBag"
 }
