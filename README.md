@@ -202,7 +202,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.5.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.6.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -240,7 +240,7 @@ meanings.
 
 Your money sits on the item window's bottom border, right-aligned under its
 bottom-right corner. Nothing else is drawn below the list: **SELECT** opens the open pocket's search
-and **START** opens **ITEM OPTIONS**, and neither is spelled out on screen.
+and **START** opens the item tools, and neither is spelled out on screen.
 
 ### Opening pocket and fast scrolling
 
@@ -255,12 +255,20 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 
 ### Favorites and pinned items
 
-Press **START** on a highlighted item to open the item options:
+Press **START** on a highlighted item to open the item tools:
 
+- **SORT** — the first row, and the same picker as the search keyboard's SORT
+  key. It is one saved preference: it orders the TM/HM pocket and the results
+  page, while every other pocket stays in the order you arrange it in.
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
-- **MOVE ITEM** — manual reordering; press START on the destination to finish.
+- **MOVE ITEM** — picks the item up and carries it. **Up/Down** walk it through
+  the pocket a row at a time, with the list reordering under it as it goes and
+  the cursor drawn hollow to show you are holding it. **A** places it, **B**
+  puts it back where you picked it up, and changing pocket drops it. Up to
+  1.5.0 this was a two-ended swap confirmed with START, which showed nothing
+  moving and left the cursor solid throughout.
 - **CANCEL** — closes the menu.
 
 Row markers show item status: `F` favorite, `P` pinned, `PF` both.
@@ -274,7 +282,7 @@ keep the order in which they were pinned.
 
 Items sort by pocket and display name whenever the Bag opens, and re-sort when a
 new item type is added or a stack disappears. TMs and HMs stay in numerical
-order with HMs before TMs. Manual MOVE ITEM reordering remains available for the
+order with HMs before TMs. Manual MOVE ITEM carrying remains available for the
 current Bag session; reopening the Bag re-applies automatic sorting without
 moving pinned items below unpinned ones.
 
@@ -375,13 +383,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.5.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.6.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.5.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.6.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
