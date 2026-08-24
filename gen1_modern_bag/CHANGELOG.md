@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.6.0
+
+- **MOVE ITEM carries the item now.** Up and Down walk it through the pocket a
+  row at a time and the list reorders under it as it goes, so the move is what
+  you see rather than something that happens once you finally commit. Up to
+  1.5.0 it was a two-ended swap: pick one item, move the cursor, press START on
+  a second, and the two traded places with nothing on screen between.
+- **A places the carried item, B puts it back where it was picked up.** START
+  no longer ends a move -- it is swallowed while one is in progress, so the
+  item tools cannot open on top of a carry. Left/Right still change pocket, and
+  that drops the carry as before.
+- **The carried item wears the hollow cursor.** 1.5.0 set `list.hollowIndex`
+  for it, which the engine's item-box path does not read, so nothing ever
+  looked picked up. It is drawn by the mod, over the solid cursor the engine
+  has already painted on that row.
+- **SORT is the first row of the item tools**, opening the same picker as the
+  search keyboard's SORT key. It is the Bag's saved ordering preference, so it
+  orders the TM/HM pocket and the results page; the other pockets are in the
+  order you arrange them in.
+- A step that the pocket's own order will not accept -- TM/HM is drawn in SORT
+  order, and pinned items sort above unpinned ones -- puts the bag order back
+  rather than leaving it quietly rearranged underneath a list that will never
+  show it.
+
+---
+
 ## 1.5.0
 
 - **SELECT opens the same search on every pocket.** There is no separate TM/HM
