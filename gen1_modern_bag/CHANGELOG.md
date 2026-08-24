@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0
+
+- **SELECT opens the same search on every pocket.** There is no separate TM/HM
+  search any more: the filter hub, its type and damage-class pickers and its
+  move-name keyboard are all gone, and with them ~250 lines.
+- The filters are folded into the query instead. A machine's search key now
+  carries its move's elemental type and damage class alongside its code, its
+  move name and its item id, so `SURF`, `HM03`, `WATER`, `SPECIAL` and
+  `STATUS` are all things you type into the one search box.
+- Machine results are listed by their move rather than as a bare `TM35`, and
+  carry their machine data, so Y/I reads them from the results page.
+- **SORT is the one filter that stays a choice**, because it is an ordering
+  rather than a term. It is a key on the keyboard, below `DEL CLR GO EXIT`,
+  with its current value on the line under `FIND`. It still writes the Bag's
+  saved preference and still orders the TM/HM pocket.
+- Sort orders the whole result list: `NAME` by displayed name, and the machine
+  modes group the machines first in that order, leaving everything else after
+  them by name -- a POTION has no machine number and no base power.
+- `mod.exports.machineRows` is unchanged, so the type and damage-class filters
+  are still available to other mods.
+
+---
+
 ## 1.4.1
 
 - Pop-up titles are drawn by the mod rather than handed to `src/ui/Menu.lua`.

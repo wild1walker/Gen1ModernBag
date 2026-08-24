@@ -14,7 +14,7 @@
 
 Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets,
 sorts items automatically, and adds Favorites, persistent pinned items, quick
-search, advanced TM/HM tools and unlimited carrying capacity — while leaving
+search, TM/HM move data and unlimited carrying capacity — while leaving
 every item effect to the vanilla Bag menu.
 
 ## Attribution
@@ -154,7 +154,7 @@ its last column before the corner ends at x = 152. The geometry is the
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua).
 
 The menus this mod opens on top of the Bag had a related problem. `ITEM
-OPTIONS`, the TM/HM filter hub and its pickers were plain `ListMenu`s, and
+OPTIONS` and the sort picker were plain `ListMenu`s, and
 `ListMenu`'s full-screen branch fills all 160×144 white, draws the title and
 the rows, and paints no frame at all — four options were covering the game with
 an undecorated white page.
@@ -164,8 +164,8 @@ engine's own framed menu widget, which is what was wanted all along: it draws
 the frame, the title on its top border and the more-arrow on the bottom one,
 and it owns the cursor, the scrolling and the input. The mod hands it rows of
 `{ label, onSelect }` and a corner to open into, and a row marked `keepOpen`
-leaves the menu standing — which is how the TM/HM hub survives underneath the
-picker it opens.
+leaves the menu standing — which is how the sort picker opens without closing
+what opened it.
 
 Titles are not handed to Menu. Menu draws its own at the border tile's own `y`
 and knocks out exactly its width, which puts ink on the frame's outer white
@@ -179,8 +179,8 @@ four such rows.
 Menu still grows `tw` to the widest label + 3 while never accounting for the
 title, so the width is asked for explicitly — the title plus its two clearance
 tiles has to fit between the corners, which is `tw - 4` — and labels are
-trimmed to it, since a twelve-glyph TM/HM query would otherwise grow the hub
-off the screen.
+trimmed to it, since a long row label would otherwise grow a menu off the
+screen.
 
 The search keyboard was the worst of them. It had no frame either; its three
 header lines sat on a 12px pitch the 8px font does not land on; and its last
@@ -202,7 +202,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.4.1.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.5.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -280,7 +280,8 @@ moving pinned items below unpinned ones.
 
 ### Quick search
 
-Press **SELECT** from any pocket except TM/HM.
+Press **SELECT** from any pocket, TM/HM included — it is the same search
+everywhere.
 
 - D-pad moves across the on-screen keyboard; individual keys can be tapped or
   clicked when Gen1 Modern UI is active.
@@ -288,12 +289,28 @@ Press **SELECT** from any pocket except TM/HM.
 - **B** deletes the last character, or closes search when the query is empty.
 - **SELECT** clears the query.
 - **START**, the Modern UI **SEARCH** button, or **GO** shows all matches.
+- **SORT** chooses the order the results come back in.
 
 Search covers every pocket and matches both the displayed name and the internal
 item identifier. An empty query lists the whole Bag alphabetically. The
-keyboard shows the query and nothing else: it carried a live match count up to
-1.3.1, which was the results page's job done twice over, and the only reason
-the search re-ran on every keystroke.
+keyboard shows the query and the sort, and nothing else: it carried a live
+match count up to 1.3.1, which was the results page's job done twice over, and
+the only reason the search re-ran on every keystroke.
+
+A machine is found by its code, its move, and that move's elemental type and
+damage class — so `SURF`, `HM03`, `WATER`, `SPECIAL` and `STATUS` are all
+things you type. Machine results are listed by their move rather than as a bare
+`TM35`. Up to 1.4.1 those were pickers in a TM/HM filter hub that SELECT opened
+instead of the keyboard when you happened to be on the TM/HM pocket; folding
+them into the query retired the hub, its two pickers and its own move-name
+keyboard.
+
+**SORT** stays a choice rather than a term, because it is an ordering: it is a
+key on the keyboard with its current value shown under `FIND`. `NAME` orders
+everything by displayed name; `NUMBER`, `POWER HIGH` and `POWER LOW` group the
+machines first in that order and leave everything else after them by name, a
+POTION having no machine number and no base power. It is the same saved
+preference that orders the TM/HM pocket.
 
 The matches do not open a page of their own. They are handed back to the Bag,
 which grows a **RESULTS** pocket for them and puts you on it — so they are read
@@ -308,17 +325,12 @@ up — it is never what **LAST USED** reopens the Bag on, and it is gone the nex
 time the Bag opens. It is not a pocket an item can be filed in, and
 `exports.pockets()` does not list it.
 
-### TM/HM search and move information
-
-The **TM HM** pocket has its own SELECT menu instead of the general search. It
-can search by the name of the move in the machine, filter by elemental type,
-filter by **PHYSICAL** / **SPECIAL** / **STATUS** damage class, sort by machine
-number, move name, highest power or lowest power, and combine those filters.
-**SHOW RESULTS** fills the same RESULTS pocket the general search does.
+### TM/HM move information
 
 Generation I uses a type-based physical/special split: Normal, Fighting, Flying,
 Poison, Ground, Rock, Bug and Ghost are PHYSICAL; Fire, Water, Grass, Electric,
-Psychic, Ice and Dragon are SPECIAL; moves with no base power are STATUS.
+Psychic, Ice and Dragon are SPECIAL; moves with no base power are STATUS. Each
+machine is findable by whichever of those its move is.
 
 Press **Y** (controller) or **I** (keyboard) on a highlighted TM/HM to open
 **MOVE INFORMATION**, showing machine number, move name, type, damage class,
@@ -346,10 +358,10 @@ unknown items fall back to OTHER.
 Gen1 Modern UI is an optional dependency. Gen1ModernBag implements the
 `gen1ModernUi` compatibility contract (`apiVersion = 1`). With **Gen1 Modern UI
 0.8.2 or newer** enabled, the seven-pocket Bag uses Modern UI's pocket-aware Bag
-presenter, and Quick Search and TM/HM move-name search expose a keyboard-grid
+presenter, and Quick Search exposes a keyboard-grid
 state so Modern UI renders large individual keys rather than a list of rows.
 Move Information uses the compatibility contract. Modern UI 0.8.2 also provides
-a dedicated **SEARCH** / **FILTER** touch button on the Bag.
+a dedicated **SEARCH** touch button on the Bag.
 
 If Modern UI is absent or disabled, Gen1ModernBag keeps its 160×144
 presentation and all inventory behaviour is unchanged.
@@ -363,13 +375,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.4.1 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.5.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.4.1.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.5.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees
