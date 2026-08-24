@@ -635,6 +635,21 @@ assert(bag.items[1].modernMachine.power == 95, "power sorting did not put strong
 assert(bag.items[#bag.items].value == "TM_SWORDS_DANCE",
   "status move should sort last by descending power")
 
+-- A-Z sorts a machine by its move rather than by "TM24". By code these run
+-- HM03, TM01, TM03, TM35; by move they run FLAMETHROWER, MEGA PUNCH, SURF,
+-- SWORDS DANCE, so the two orders disagree on the first row.
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local azTools = assert(stack:top(), "the item tools did not open")
+azTools:choose(1)
+local azPicker = assert(stack:top(), "SORT opened no picker")
+assert(azPicker.items[1].label == "A-Z", "A-Z is not the first sort option")
+azPicker:choose(1)
+bag:update(0)
+assert(bag.items[1].value == "TM_FLAMETHROWER",
+  "A-Z on TM/HM did not sort by the move: " .. bag.items[1].label)
+
 -- It wrote the order rather than setting a preference, so it holds until
 -- something else changes it -- and the saved results preference is untouched.
 assert(saved.machine_sort ~= "POWER_DESC",
@@ -1315,10 +1330,13 @@ bag:update(0)
 local medTools = assert(stack:top(), "the item tools did not open in MEDICINE")
 medTools:choose(1)
 local medPicker = assert(stack:top(), "SORT opened no picker")
--- A pocket with no machines in it is offered NAME and nothing else: machine
--- number and base power mean nothing to a pocket of potions.
-assert(#medPicker.items == 1 and medPicker.items[1].label == "NAME",
-  "a machineless pocket was offered the machine sorts")
+-- The orders that apply to anything in the Bag are offered everywhere; the
+-- machine ones are not, because number and base power mean nothing to a
+-- pocket of potions.
+local medLabels = {}
+for i, row in ipairs(medPicker.items) do medLabels[i] = row.label end
+assert(table.concat(medLabels, ",") == "A-Z,Z-A,MOST FIRST",
+  "wrong sort options on a machineless pocket: " .. table.concat(medLabels, ","))
 medPicker:choose(1)
 bag:update(0)
 bag.modernBag.pocket = 7
@@ -1346,21 +1364,17 @@ end
 bag:update(0)
 assert(bag.items[1].modernPinned, "the pin did not take")
 
--- Pinning re-sorts the bag, which puts the pin first in the order as well as
--- at the top of the pocket. The slot list only comes out unsorted once the two
--- disagree, so put the pinned row later in the order by hand -- the bag order
--- is shared, and nothing guarantees it agrees with how a pocket is drawn.
-local pinnedValue, otherValue = bag.items[1].value, bag.items[2].value
-local pinnedAt, otherAt
+-- Pinning floats the row to the top of the pocket without touching the order
+-- it is stored in, so the two now disagree on their own -- which is the state
+-- that makes the slot list come out unsorted.
+local pinnedValue = bag.items[1].value
+local pinnedAt, secondAt
 for i, id in ipairs(game.save.bagOrder) do
-  if id == pinnedValue then pinnedAt = i elseif id == otherValue then otherAt = i end
+  if id == pinnedValue then pinnedAt = i
+  elseif id == bag.items[2].value then secondAt = i end
 end
-assert(pinnedAt and otherAt and pinnedAt < otherAt,
-  "expected the pinned row first in the bag order")
-game.save.bagOrder[pinnedAt], game.save.bagOrder[otherAt] =
-  game.save.bagOrder[otherAt], game.save.bagOrder[pinnedAt]
-bag:update(0)
-assert(bag.items[1].value == pinnedValue, "the pinned row left the top of the pocket")
+assert(pinnedAt and secondAt and pinnedAt > secondAt,
+  "expected the pinned row to sit later in the order than the row below it")
 
 bag.index = 1
 pressed.start = true
@@ -1404,5 +1418,90 @@ if resultPicker and resultPicker ~= resultTools then resultPicker:choose(1) end
 bag:update(0)
 assert(table.concat(game.save.bagOrder, ",") == orderBeforeResults,
   "SORT on the results page rewrote the bag order")
+
+-- What the player arranges survives closing the Bag. Up to 1.8.0 the whole
+-- order was re-sorted alphabetically on every open, so a Z-A sort or a hand
+-- arrangement was gone the moment the Bag was reopened -- which is what made
+-- SORT look like it did nothing lasting.
+bag.modernBag.pocket = 7
+bag:update(0)
+bag.index = 1
+pressed.start = true
+bag:update(0)
+local zTools = assert(stack:top(), "the item tools did not open")
+zTools:choose(1)
+local zPicker = assert(stack:top(), "SORT opened no picker")
+local zRow
+for i, row in ipairs(zPicker.items) do
+  if row.label == "Z-A" then zRow = i end
+end
+assert(zRow, "Z-A is missing from the sort options")
+zPicker:choose(zRow)
+bag:update(0)
+local arranged = {}
+for i, row in ipairs(bag.items) do arranged[i] = row.value end
+-- Z-A has to have actually changed something, or this proves nothing.
+local ascending = {}
+for i, value in ipairs(arranged) do ascending[i] = value end
+table.sort(ascending)
+assert(table.concat(arranged, ",") ~= table.concat(ascending, ","),
+  "Z-A left the pocket in ascending order, so the reopen check is vacuous")
+
+local afterClose = BagMenu.new(game, {})
+afterClose.modernBag.pocket = 7
+afterClose:update(0)
+for i, value in ipairs(arranged) do
+  assert(afterClose.items[i].value == value,
+    ("reopening the Bag undid the arrangement at row %d: %s"):format(
+      i, afterClose.items[i].value))
+end
+
+-- Something newly acquired still arrives: appended to the order, which puts it
+-- at the bottom of its own pocket rather than at the end of the Bag.
+game.data.items.FULL_HEAL = { name = "FULL HEAL", effect = "HEAL_STATUS" }
+require("src.inventory.Bag").add(game.save, "FULL_HEAL", 1)
+local withNew = BagMenu.new(game, {})
+withNew.modernBag.pocket = 2                    -- MEDICINE, where it belongs
+withNew:update(0)
+assert(withNew.items[#withNew.items].value == "FULL_HEAL",
+  "a new item did not arrive at the bottom of its pocket")
+withNew.modernBag.pocket = 7
+withNew:update(0)
+for _, row in ipairs(withNew.items) do
+  assert(row.value ~= "FULL_HEAL", "a new medicine landed in another pocket")
+end
+
+-- MOST FIRST orders by how many you have, which is an order no other option
+-- produces and one that applies to any pocket.
+game.save.inventory.ANTIDOTE = 1
+game.save.inventory.POTION = 7
+game.save.inventory.FULL_HEAL = 5
+local counted = BagMenu.new(game, {})
+counted.modernBag.pocket = 2
+counted:update(0)
+assert(#counted.items >= 3, "not enough medicine to order by count")
+counted.index = 1
+pressed.start = true
+counted:update(0)
+local countTools = assert(stack:top(), "the item tools did not open")
+countTools:choose(1)
+local countPicker = assert(stack:top(), "SORT opened no picker")
+local mostRow
+for i, row in ipairs(countPicker.items) do
+  if row.label == "MOST FIRST" then mostRow = i end
+end
+assert(mostRow, "MOST FIRST is missing from the sort options")
+countPicker:choose(mostRow)
+counted:update(0)
+local previousCount
+for _, row in ipairs(counted.items) do
+  local count = tonumber(row.right:match("x(%d+)"))
+  assert(count, "a row carried no count: " .. row.right)
+  assert(previousCount == nil or count <= previousCount,
+    ("MOST FIRST left %s (x%d) after a smaller stack"):format(row.label, count))
+  previousCount = count
+end
+-- By name these would run ANTIDOTE, FULL HEAL, POTION -- 1, 5, 7 -- so the
+-- descending check above is not satisfied by alphabetical order by accident.
 
 print("gen1_modern_bag_move_test: ok")

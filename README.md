@@ -13,7 +13,7 @@
 </p>
 
 Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets,
-sorts items automatically, and adds Favorites, persistent pinned items, quick
+files items on first open, and adds Favorites, persistent pinned items, quick
 search, TM/HM move data and unlimited carrying capacity — while leaving
 every item effect to the vanilla Bag menu.
 
@@ -259,10 +259,10 @@ Press **START** on a highlighted item to open the item tools:
 
 - **SORT** — re-sorts the open pocket once and then leaves it alone, so MOVE
   ITEM adjusts what it produced. It rewrites only the slots that pocket already
-  occupies, so the others keep their own order. A pocket with no machines in it
-  is offered `NAME` and nothing else. Up to 1.6.0 this set a saved preference
-  instead, which showed on the TM/HM pocket and the results page and did
-  nothing visible anywhere else.
+  occupies, so the others keep their own order. `A-Z`, `Z-A` and `MOST FIRST`
+  are offered on every pocket; `TM/HM NUMBER`, `POWER HIGH` and `POWER LOW`
+  only on a pocket that holds a machine. `A-Z` sorts a machine by its move
+  rather than by `TM24`.
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
@@ -281,16 +281,22 @@ keeps its saved status, and returns when reacquired. Pinned items sort above
 unpinned items and are not moved by alphabetical sorting; multiple pinned items
 keep the order in which they were pinned.
 
-### Automatic sorting
+### The Bag's order is yours
 
-Items sort by pocket and display name whenever the Bag opens, and re-sort when a
-new item type is added or a stack disappears. TMs and HMs stay in numerical
-order with HMs before TMs — which is the bag order, so the TM/HM pocket is
-arrangeable by hand like any other. Up to 1.6.0 it was drawn in the saved sort
-instead, which was redrawn over every manual move. Manual MOVE ITEM carrying
-remains available for the
-current Bag session; reopening the Bag re-applies automatic sorting without
-moving pinned items below unpinned ones.
+The Bag is filed once, the first time this version opens it: by pocket and
+display name, TMs and HMs in numerical order with HMs before TMs. After that
+the order is whatever you make of it. **SORT** re-sorts a pocket on demand and
+**MOVE ITEM** rearranges it by hand, and both last — opening the Bag only drops
+what you no longer carry.
+
+Up to 1.8.0 the whole order was re-sorted alphabetically on every open, which
+undid every manual move and every one-shot SORT the moment the Bag was closed,
+so no ordering you chose ever survived. Something newly acquired is appended,
+which puts it at the bottom of its own pocket rather than at the end of the
+Bag; `A-Z` tidies the pocket up again whenever you want it.
+
+Pinned items float to the top of their pocket when the rows are drawn, so
+pinning does not disturb the order underneath.
 
 ### Quick search
 
