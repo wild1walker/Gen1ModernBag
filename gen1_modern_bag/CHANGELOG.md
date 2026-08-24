@@ -20,11 +20,6 @@
   them by name -- a POTION has no machine number and no base power.
 - `mod.exports.machineRows` is unchanged, so the type and damage-class filters
   are still available to other mods.
-
----
-
-## 1.4.1
-
 - Pop-up titles are drawn by the mod rather than handed to `src/ui/Menu.lua`.
   Menu draws its own at the border tile's own y and knocks out exactly its
   width, which puts ink on the frame's outer white margin and ends the rule
@@ -32,8 +27,8 @@
   `drawBorderLabel` as every other title here -- a pixel lower, with a tile of
   clearance at each end. Only `draw` is wrapped, so the frame, the rows, the
   cursor and the more-arrow all stay Menu's.
-- **TM HM is written TM/HM.** The pocket header, the search title, the sort
-  picker and the move-name keyboard all carry the slash now.
+- **TM HM is written TM/HM.** The pocket header, the search title and the sort
+  picker all carry the slash now.
 - **ITEM OPTIONS lost its title.** Four rows that name themselves do not need
   one, and the window is a row shorter for it.
 
