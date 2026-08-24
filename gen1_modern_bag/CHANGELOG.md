@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.9.0
+
+- **The sort options apply to the whole Bag, not just to machines.** `A-Z`,
+  `Z-A` and `MOST FIRST` are offered on every pocket. The machine orders --
+  now `TM/HM NUMBER`, `POWER HIGH` and `POWER LOW` -- are offered only on a
+  pocket that holds a machine. Up to 1.8.0 the list was the machine orders plus
+  `NAME`, so on any other pocket the only choice was the order the Bag was
+  already in, which is why SORT looked like it only worked on TM/HM.
+- `A-Z` sorts a machine by its move rather than by `TM24`.
+- **What you arrange now survives closing the Bag.** The whole order was being
+  re-sorted alphabetically every time the Bag opened, which undid every manual
+  move and every one-shot SORT -- so no ordering you chose ever lasted. Opening
+  the Bag only drops what you no longer carry.
+- The Bag is still filed once, the first time this version opens it, so an
+  existing save arrives sorted. After that the order is yours.
+- Something newly acquired is appended, which puts it at the bottom of its own
+  pocket rather than at the end of the Bag.
+- Pinning no longer re-sorts the Bag. Pinned rows float to the top of their
+  pocket when the rows are drawn, so the order underneath does not need
+  rewriting for it.
+
+---
+
 ## 1.8.0
 
 - **The search keyboard carries the query and the keys, and nothing else.**
