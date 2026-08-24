@@ -33,6 +33,16 @@
   It is now one framed window with everything on the 8px grid, and the action
   row is measured and centred so no two words can share a column whatever the
   font. The TM/HM move-name keyboard is the same screen and gets the same fix.
+- **Rebuilt MOVE INFORMATION**, the last screen still drawn as a bare white
+  page. It had no frame either, and its eleven lines sat on a 14px pitch the
+  8px font does not land on, so every row but one fell between the rows the
+  rest of the game draws on. It is now the same screen-filling window as the
+  search keyboard, with the sixteen interior rows spent on the title, the
+  machine and its move, the five stats, the effect over three wrapped lines,
+  and the way out.
+- Fixed MOVE INFORMATION leaving the draw colour black when a machine had no
+  move data. That path returned early, before the line that puts the colour
+  back, so whatever drew next inherited the text colour.
 - The match count on Quick Search is recomputed when the query changes rather
   than on every frame.
 - No change to pocket contents, sorting, Favorites, pins, search results or

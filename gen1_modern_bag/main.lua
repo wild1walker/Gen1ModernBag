@@ -188,6 +188,16 @@ end
 -- recognise.
 local SCREEN_TILES_W = 20
 local SCREEN_TILES_H = 18
+
+-- A window over the whole screen, for the two screens that have more to say
+-- than a corner will hold. Its interior is the eighteen columns from x = 8 and
+-- the sixteen rows from y = 8.
+local WINDOW_BOX = { tx = 0, ty = 0, tw = SCREEN_TILES_W, th = SCREEN_TILES_H }
+local WINDOW_LEFT_X = 8
+local WINDOW_TOP_Y = 8
+local WINDOW_BOTTOM_Y = 128
+local WINDOW_INNER_W = 144
+
 local POPUP_MAX_ROWS = 9
 local POPUP_MIN_INNER_TILES = 8
 
@@ -787,11 +797,10 @@ local SEARCH_GRID = {
 -- letters keep a cell per key, the cursor in the column to the left of the
 -- glyph, and the action row is measured and centred so no two words can share
 -- a column whatever the font.
-local KEYBOARD_BOX = { tx = 0, ty = 0, tw = SCREEN_TILES_W, th = SCREEN_TILES_H }
-local KEYBOARD_LEFT_X = 8      -- the window's first interior column
-local KEYBOARD_INNER_W = 144   -- eighteen columns of it
+local KEYBOARD_LEFT_X = WINDOW_LEFT_X
+local KEYBOARD_INNER_W = WINDOW_INNER_W
 local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
-local KEYBOARD_HEADER_Y = 8
+local KEYBOARD_HEADER_Y = WINDOW_TOP_Y
 local KEYBOARD_GRID_TOP = 40
 local KEYBOARD_ROW_H = 16
 local KEYBOARD_ACTION_Y = 104
@@ -833,7 +842,7 @@ local function drawSearchKeyboard(screen, headerLines)
   local Font = require("src.render.Font")
   local Theme = require("src.ui.Theme")
   love.graphics.setColor(1, 1, 1, 1)
-  Font.drawBox(KEYBOARD_BOX.tx, KEYBOARD_BOX.ty, KEYBOARD_BOX.tw, KEYBOARD_BOX.th)
+  Font.drawBox(WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw, WINDOW_BOX.th)
   love.graphics.setColor(0, 0, 0, 1)
   local y = KEYBOARD_HEADER_Y
   for _, line in ipairs(headerLines) do
@@ -1029,29 +1038,59 @@ function MoveInfoScreen:update(dt)
   end
 end
 
+-- Move Information.
+--
+-- The last of the mod's screens to be drawn as a bare white page: no frame,
+-- and eleven lines on a 14px pitch the 8px font does not land on, so every row
+-- but one sat between the rows the rest of the game draws on. A machine with
+-- no move data also escaped through an early return that never put the draw
+-- colour back, leaving black set for whatever drew next.
+--
+-- It is the same screen-filling window the search keyboard uses, with the
+-- sixteen interior rows spent: the title, the machine and its move, the five
+-- stats, the effect over three wrapped lines, and the way out -- each block
+-- separated by a blank row.
+local INFO_TITLE_Y = WINDOW_TOP_Y             --  8
+local INFO_MOVE_Y = WINDOW_TOP_Y + 16         -- 24
+local INFO_STATS_Y = WINDOW_TOP_Y + 32        -- 40
+local INFO_EFFECT_LABEL_Y = WINDOW_TOP_Y + 80 -- 88
+local INFO_EFFECT_Y = WINDOW_TOP_Y + 88       -- 96
+local INFO_EFFECT_LINES = 3
+local INFO_EFFECT_COLS = 18
+local INFO_BACK_HINT = "Y/I OR A/B BACK"
+
 function MoveInfoScreen:draw()
   local Font = require("src.render.Font")
   local info = self.info
   love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.rectangle("fill", 0, 0, 160, 144)
+  Font.drawBox(WINDOW_BOX.tx, WINDOW_BOX.ty, WINDOW_BOX.tw, WINDOW_BOX.th)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw("MOVE INFORMATION", 8, 4)
-  if not info then
-    Font.draw("NO MOVE DATA", 8, 32)
-    Font.draw("B BACK", 8, 132)
-    return
+  Font.draw("MOVE INFORMATION", WINDOW_LEFT_X, INFO_TITLE_Y)
+
+  if info then
+    -- Four for the code, two for the gap, twelve for the longest Gen 1 move
+    -- name: eighteen, which is the interior exactly.
+    Font.draw(info.code .. "  " .. info.name, WINDOW_LEFT_X, INFO_MOVE_Y)
+    local stats = {
+      "TYPE: " .. info.typeLabel,
+      "CLASS: " .. info.damageClass,
+      "POWER: " .. (info.power > 0 and tostring(info.power) or "--"),
+      "ACCURACY: " .. (info.accuracy and (tostring(info.accuracy) .. "%") or "--"),
+      "PP: " .. tostring(info.pp),
+    }
+    for i, line in ipairs(stats) do
+      Font.draw(line, WINDOW_LEFT_X, INFO_STATS_Y + (i - 1) * 8)
+    end
+    Font.draw("EFFECT:", WINDOW_LEFT_X, INFO_EFFECT_LABEL_Y)
+    local lines = wrapWords(info.effect, INFO_EFFECT_COLS, INFO_EFFECT_LINES)
+    for i = 1, math.min(#lines, INFO_EFFECT_LINES) do
+      Font.draw(lines[i], WINDOW_LEFT_X, INFO_EFFECT_Y + (i - 1) * 8)
+    end
+  else
+    Font.draw("NO MOVE DATA", WINDOW_LEFT_X, INFO_MOVE_Y)
   end
-  Font.draw(info.code .. "  " .. info.name, 8, 18)
-  Font.draw("TYPE: " .. info.typeLabel, 8, 34)
-  Font.draw("CLASS: " .. info.damageClass, 8, 48)
-  Font.draw("POWER: " .. (info.power > 0 and tostring(info.power) or "--"), 8, 62)
-  Font.draw("ACCURACY: " .. (info.accuracy and (tostring(info.accuracy) .. "%") or "--"), 8, 76)
-  Font.draw("PP: " .. tostring(info.pp), 8, 90)
-  Font.draw("EFFECT:", 8, 104)
-  local effectLines = wrapWords(info.effect, 18, 2)
-  Font.draw(effectLines[1] or "--", 8, 116)
-  if effectLines[2] then Font.draw(effectLines[2], 8, 128) end
-  Font.draw("Y/I OR B: BACK", 48, 136)
+
+  Font.draw(INFO_BACK_HINT, WINDOW_LEFT_X, WINDOW_BOTTOM_Y)
   love.graphics.setColor(1, 1, 1, 1)
 end
 

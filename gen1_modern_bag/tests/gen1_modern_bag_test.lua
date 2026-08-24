@@ -34,7 +34,11 @@ function love.graphics.pop()
 end
 function love.graphics.translate(dx) transform.tx = transform.tx + transform.sx * dx end
 function love.graphics.scale(sx) transform.sx = transform.sx * sx end
-function love.graphics.setColor() end
+local drawColor = { 1, 1, 1, 1 }
+function love.graphics.setColor(r, g, b, a) drawColor = { r, g, b, a } end
+local function drawColorIsWhite()
+  return drawColor[1] == 1 and drawColor[2] == 1 and drawColor[3] == 1
+end
 function love.graphics.rectangle() end
 
 -- The screen column an 8px cell drawn at local `x` covers; a mirrored cell
@@ -507,6 +511,57 @@ pressed.gen1_modern_bag_move_info = true
 bag:update(0)
 local infoScreen = assert(stack:top(), "move information screen did not open")
 assert(infoScreen.info and infoScreen.info.moveId == "SWORDS_DANCE", "move information targeted the wrong machine")
+
+-- Move Information was the last screen drawn as a bare white page: no frame,
+-- and eleven lines on a 14px pitch the 8px font does not land on. It is now
+-- the same framed window as the search keyboard, everything on the grid.
+--
+-- A 20x18 window's interior is columns 8..152 and rows 8..128.
+local WIN_LEFT, WIN_RIGHT, WIN_TOP, WIN_BOTTOM = 8, 152, 8, 128
+
+local function windowPaint(screen)
+  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  screen:draw()
+  assert(#painted.boxes == 1, "the screen should be one framed window")
+  local frame = painted.boxes[1]
+  assert(frame.tx == 0 and frame.ty == 0 and frame.tw == 20 and frame.th == 18,
+    "the window does not frame the screen")
+  -- Text is drawn black; every screen has to hand the colour back white or
+  -- whatever draws next inherits the black. The no-data path used to escape
+  -- through an early return that never did.
+  assert(drawColorIsWhite(), "the screen left the draw colour set to its text colour")
+  local rows = {}
+  for _, call in ipairs(painted.text) do
+    assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
+    assert(call.y >= WIN_TOP and call.y <= WIN_BOTTOM,
+      ("%q is outside the window at y = %d"):format(call.text, call.y))
+    assert(call.x >= WIN_LEFT, ("%q starts left of the window"):format(call.text))
+    local right = call.x + (utf8.len(call.text) or #call.text) * 8
+    assert(right <= WIN_RIGHT, ("%q overruns the window"):format(call.text))
+    assert(rows[call.y] == nil, ("two lines share row %d"):format(call.y))
+    rows[call.y] = call.text
+  end
+  return rows
+end
+
+local infoRows = windowPaint(infoScreen)
+assert(infoRows[8] == "MOVE INFORMATION", "the title is not on the first interior row")
+assert(infoRows[24] == "TM03  SWORDS DANCE", "wrong machine line: " .. tostring(infoRows[24]))
+assert(infoRows[40] == "TYPE: NORMAL" and infoRows[48] == "CLASS: STATUS"
+  and infoRows[56] == "POWER: --" and infoRows[64] == "ACCURACY: 100%"
+  and infoRows[72] == "PP: 30", "the stat block is wrong")
+assert(infoRows[88] == "EFFECT:" and infoRows[96] == "ATTACK UP2", "the effect block is wrong")
+assert(infoRows[128] == "Y/I OR A/B BACK", "the way out is not on the last interior row")
+
+-- A machine with no move data takes the same window, and hands the colour
+-- back like every other path.
+local savedInfo = infoScreen.info
+infoScreen.info = nil
+local blankRows = windowPaint(infoScreen)
+assert(blankRows[24] == "NO MOVE DATA", "the no-data screen lost its message")
+assert(blankRows[128] == "Y/I OR A/B BACK", "the no-data screen lost its way out")
+infoScreen.info = savedInfo
+
 stack:pop()
 
 -- SELECT in the TM/HM pocket opens the dedicated filter/sort hub: it is that

@@ -148,6 +148,15 @@ window with everything on the 8px grid: the letters keep a cell each with the
 cursor in the column to their left, and the action row is measured and centred
 so no two words can share a column whatever the font.
 
+`MOVE INFORMATION` had the same two problems — no frame, and eleven lines on a
+14px pitch, so every row but one fell between the rows the rest of the game
+draws on. It takes the same screen-filling window, with the sixteen interior
+rows spent on the title, the machine and its move, the five stats, the effect
+over three wrapped lines, and the way out, each block separated by a blank row.
+It also used to escape through an early return when a machine had no move data,
+before the line that puts the draw colour back, leaving black set for whatever
+drew next; that path now takes the same window as every other.
+
 ## Installation
 
 1. Download `gen1_modern_bag_v1.2.0.zip` from the releases page.
