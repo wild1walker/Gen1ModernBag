@@ -607,6 +607,26 @@ local MACHINE_SORT_LABELS = {
   POWER_DESC = "POWER HIGH", POWER_ASC = "POWER LOW",
 }
 
+-- One row ordering, used by the pocket re-sort and by the results page.
+-- NAME goes by displayed name; the machine modes group the machines first, in
+-- that order, and leave everything else after them by name -- a POTION has no
+-- machine number and no base power.
+local function rowSortLess(a, b, mode)
+  local am, bm = a.modernMachine, b.modernMachine
+  if mode ~= "NAME" then
+    if (am ~= nil) ~= (bm ~= nil) then return am ~= nil end
+    if am and bm then return machineSortLess(a, b, mode) end
+  elseif am and bm and am.nameKey ~= bm.nameKey then
+    -- A machine's name is its move's. Its own is "TM24".
+    return am.nameKey < bm.nameKey
+  end
+  return (a.modernSort or "") < (b.modernSort or "")
+end
+
+local function orderRowsBy(rows, mode)
+  table.sort(rows, function(a, b) return rowSortLess(a, b, mode) end)
+end
+
 local function setMachineSort(state, mode)
   mode = upper(mode)
   if not MACHINE_SORT_VALUES[mode] then mode = "NUMBER" end
@@ -700,6 +720,9 @@ local function itemRows(game, pocketId, state)
           label = label,
           right = (markers ~= "" and (markers .. " ") or "") .. "x" .. tostring(count),
           value = id,
+          -- The displayed name, not the row label: a machine's row reads
+          -- "TM24 SELFDES.", and sorting by that is code order, not name.
+          modernSort = normalizedSearch((def and def.name) or id) .. "\0" .. tostring(id),
           modernGlobalIndex = globalIndex,
           modernPocket = pocketIndexFor(id, def),
           modernPinned = pinned,
@@ -721,9 +744,6 @@ local function itemRows(game, pocketId, state)
     if pocketId == "favorites"
        and a.modernFavoriteRank ~= b.modernFavoriteRank then
       return a.modernFavoriteRank < b.modernFavoriteRank
-    end
-    if pocketId == "machines" then
-      return machineSortLess(a, b, state and state.machineSort or "NUMBER")
     end
     return a.modernSourceIndex < b.modernSourceIndex
   end)
@@ -836,23 +856,97 @@ local function showResults(list, results)
   refreshPocket(list)
 end
 
--- Sorting, from the search keyboard's SORT key and from the item tools.
-local SORT_MODES = { "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" }
+-- Sorting.
+--
+-- Two different things wear the name, because they order two different lists.
+--
+-- The item tools re-sort the open pocket once and then leave it alone: they
+-- rewrite the order the pocket is drawn from, and MOVE ITEM adjusts what they
+-- produced. A saved sort would have to win over every manual move to stay
+-- true, which is the opposite of what MOVE ITEM is for -- and up to 1.6.0 it
+-- did exactly that on the TM/HM pocket, which was drawn in the saved order and
+-- so could not be arranged by hand at all.
+--
+-- The search keyboard's SORT is a saved preference, because the results page
+-- is built fresh from the query every time and has no order to keep.
+local SORT_MODES = { "NAME", "NUMBER", "POWER_DESC", "POWER_ASC" }
 
-local function openSortMenu(bagList)
-  local state = bagList and bagList.modernBag
-  if not state then return end
+-- Rewrites the open pocket's slice of the order it is drawn from, leaving
+-- every other pocket's items exactly where they were: only the positions this
+-- pocket already occupies are written back, in the wanted order.
+local sortPocket
+function sortPocket(list, mode)
+  local state = list.modernBag
+  local pocket = state and POCKETS[state.pocket]
+  local rows = list.items or {}
+  if not pocket or #rows < 2 then return false end
+  -- The results page is ordered by the search that filled it, not by an order
+  -- there is anything to rewrite.
+  if pocket.transient then return false end
+
+  local order
+  if pocket.id == "favorites" then
+    order = state.favoriteOrder
+  else
+    order = require("src.inventory.Bag").order(list.game.save)
+  end
+
+  local slots, sorted = {}, {}
+  for _, row in ipairs(rows) do
+    local at = positionOf(order, row.value)
+    if at then
+      slots[#slots + 1] = at
+      sorted[#sorted + 1] = row
+    end
+  end
+  if #slots < 2 then return false end
+  table.sort(slots)
+  orderRowsBy(sorted, mode)
+  for i, slot in ipairs(slots) do order[slot] = sorted[i].value end
+
+  if pocket.id == "favorites" then
+    rebuildPreferenceIndexes(state)
+    persistPreferences(state)
+  end
+  pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
+  refreshPocket(list, selectedId(list))
+  return true
+end
+
+local function sortMenuRows(bagList, forResults)
+  local state = bagList.modernBag
+  local machines = false
+  for _, row in ipairs(bagList.items or {}) do
+    if row.modernMachine then machines = true break end
+  end
   local rows = {}
   for _, mode in ipairs(SORT_MODES) do
-    rows[#rows + 1] = {
-      label = MACHINE_SORT_LABELS[mode],
-      onSelect = function()
-        setMachineSort(state, mode)
-        refreshPocket(bagList, selectedId(bagList))
-      end,
-    }
+    -- Machine number and base power mean nothing to a pocket of potions.
+    if mode == "NAME" or forResults or machines then
+      rows[#rows + 1] = {
+        label = MACHINE_SORT_LABELS[mode],
+        onSelect = function()
+          if forResults then
+            setMachineSort(state, mode)
+            refreshPocket(bagList, selectedId(bagList))
+          else
+            sortPocket(bagList, mode)
+          end
+        end,
+      }
+    end
   end
-  openMenu(bagList.game, "SORT", rows, { ty = SORT_PICKER_TY })
+  return rows
+end
+
+local function openResultSortMenu(bagList)
+  if not (bagList and bagList.modernBag) then return end
+  openMenu(bagList.game, "SORT", sortMenuRows(bagList, true), { ty = SORT_PICKER_TY })
+end
+
+local function openPocketSortMenu(bagList)
+  if not (bagList and bagList.modernBag) then return end
+  openMenu(bagList.game, "SORT", sortMenuRows(bagList, false), { ty = SORT_PICKER_TY })
 end
 
 -- Moving an item.
@@ -983,15 +1077,7 @@ end
 -- modes group the machines first, in that order, and leave everything else
 -- after them by name -- a POTION has no machine number and no base power.
 local function sortSearchRows(rows, state)
-  local mode = state and state.machineSort or "NAME"
-  table.sort(rows, function(a, b)
-    if mode ~= "NAME" then
-      local am, bm = a.modernMachine ~= nil, b.modernMachine ~= nil
-      if am ~= bm then return am end
-      if am and bm then return machineSortLess(a, b, mode) end
-    end
-    return a.modernSort < b.modernSort
-  end)
+  orderRowsBy(rows, state and state.machineSort or "NAME")
 end
 
 local function searchRows(game, query, state)
@@ -1242,7 +1328,7 @@ end
 -- The sort applies to the results and is the Bag's own saved preference, so
 -- the picker writes it straight through and re-sorts the open pocket.
 function QuickSearch:openSortPicker()
-  openSortMenu(self.bagList)
+  openResultSortMenu(self.bagList)
 end
 
 function QuickSearch:sortLabel()
@@ -1407,7 +1493,7 @@ local function openItemTools(item, list)
   -- onSelect that happens.
   openMenu(list.game, nil, {
     -- Ordering first: it is about the whole pocket rather than this item.
-    { label = "SORT", onSelect = function() openSortMenu(list) end },
+    { label = "SORT", onSelect = function() openPocketSortMenu(list) end },
     {
       label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE",
       onSelect = function()

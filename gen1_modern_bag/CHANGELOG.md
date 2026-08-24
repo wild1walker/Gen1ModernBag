@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.7.0
+
+- **SORT in the item tools re-sorts the open pocket once and then leaves it
+  alone.** It rewrites the order the pocket is drawn from, and MOVE ITEM
+  adjusts what it produced. In 1.6.0 it set a saved preference, which only
+  showed on the TM/HM pocket and the results page and did nothing visible
+  anywhere else.
+- Only the slots the pocket already occupies are rewritten, in place, so every
+  other pocket keeps its own order.
+- A pocket with no machines in it is offered `NAME` and nothing else: machine
+  number and base power mean nothing to a pocket of potions.
+- **The TM/HM pocket follows the bag order like every other pocket.** It was
+  drawn in the saved sort, which won over every manual move -- so it was the
+  one pocket MOVE ITEM could never arrange, and the one pocket a one-shot
+  re-sort would have been redrawn over. Its default order is unchanged:
+  automatic sorting already files machines HM-first by number.
+- `NAME` sorts a machine by its move rather than by `TM24`.
+- The search keyboard's SORT is unchanged and still a saved preference: the
+  results page is built from the query every time and has no order to keep.
+
+---
+
 ## 1.6.0
 
 - **MOVE ITEM carries the item now.** Up and Down walk it through the pocket a
