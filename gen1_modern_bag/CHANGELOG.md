@@ -17,11 +17,6 @@
 - Respaced the keyboard for what is left: a row above `FIND`, two between
   `FIND` and the letters, two between the letters and the action row, and two
   below it.
-
----
-
-## 1.7.0
-
 - **SORT in the item tools re-sorts the open pocket once and then leaves it
   alone.** It rewrites the order the pocket is drawn from, and MOVE ITEM
   adjusts what it produced. In 1.6.0 it set a saved preference, which only
@@ -37,8 +32,6 @@
   re-sort would have been redrawn over. Its default order is unchanged:
   automatic sorting already files machines HM-first by number.
 - `NAME` sorts a machine by its move rather than by `TM24`.
-- The search keyboard's SORT is unchanged and still a saved preference: the
-  results page is built from the query every time and has no order to keep.
 
 ---
 
