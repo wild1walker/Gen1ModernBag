@@ -152,16 +152,28 @@ occupies on the top border. The geometry is the `MONEY_*` constants in
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua).
 
 The menus this mod opens on top of the Bag had a related problem. `ITEM
-OPTIONS`, the TM/HM filter hub and its pickers are plain `ListMenu`s, and
+OPTIONS`, the TM/HM filter hub and its pickers were plain `ListMenu`s, and
 `ListMenu`'s full-screen branch fills all 160×144 white, draws the title and
 the rows, and paints no frame at all — four options were covering the game with
-an undecorated white page. They are drawn as framed windows over whatever
-opened them instead, sized to their own contents and anchored to the
-bottom-right corner, titled on their own top border like the item window:
-frame, then one row per option, and the title costs no interior row. Only
-`draw` is replaced, so movement, wrapping, scrolling and `onChoose` stay the
-engine's and the screen is still a real `ListMenu` for Gen1 Modern UI to
-recognise.
+an undecorated white page.
+
+They are now [`src/ui/Menu.lua`](https://github.com/FAFF0x/gen1recomp), the
+engine's own framed menu widget, which is what was wanted all along: it draws
+the frame, the title on its top border and the more-arrow on the bottom one,
+and it owns the cursor, the scrolling and the input. The mod hands it rows of
+`{ label, onSelect }` and a corner to open into, and a row marked `keepOpen`
+leaves the menu standing — which is how the TM/HM hub survives underneath the
+picker it opens.
+
+Two things Menu asks of its caller. It knocks out exactly the title's width,
+so its rule ends flush against the first and last letter; every title here is
+padded with a space at each end, applied at the call site rather than inside
+the string, because a title is a catalog key elsewhere in the engine and
+padding inside would make the padding part of the key. And it grows `tw` to the
+widest label + 3 while never accounting for the title, so the width is asked
+for explicitly — `#Font.split(title) <= tw - 4`, or the padded title runs into
+the top-right corner glyph — and labels are trimmed to it, since a twelve-glyph
+TM/HM query would otherwise grow the hub off the screen.
 
 The search keyboard was the worst of them. It had no frame either; its three
 header lines sat on a 12px pitch the 8px font does not land on; and its last

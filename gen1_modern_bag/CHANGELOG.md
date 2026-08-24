@@ -68,13 +68,20 @@
 - The TM/HM sort mode is no longer printed on the Bag. It is a row in the TM/HM
   tools, `SORT: NUMBER`, and is still published as `machineSortLabel`.
 - **ITEM OPTIONS is a window over the Bag instead of a full-screen page.** It
-  and the TM/HM filter hub, MOVE TYPE, DAMAGE CLASS and SORT TM HM are plain
+  and the TM/HM filter hub, MOVE TYPE, DAMAGE CLASS and SORT TM HM were plain
   `ListMenu`s, and `ListMenu`'s full-screen branch fills all 160x144 white and
   paints no frame at all: four options were covering the game with an
-  undecorated white page. They are now framed windows sized to their own
-  contents and anchored to the bottom-right corner. Only `draw` is replaced, so
-  movement, scrolling and choosing stay the engine's and the screens are still
-  real `ListMenu`s for Gen1 Modern UI to recognise.
+  undecorated white page. They are now `src/ui/Menu.lua`, the engine's own
+  framed menu widget -- it draws the frame, the title on its top border and the
+  more-arrow on the bottom one, and owns the cursor, the scrolling and the
+  input. The mod hands it rows of `{ label, onSelect }` and a corner.
+- Menu knocks out exactly its title's width, so its rule would end flush
+  against the first and last letter. Every title is padded with a space at each
+  end, at the call site rather than inside the string: a title is a catalog key
+  elsewhere in the engine, and padding inside would make the padding part of
+  the key. Menu also grows `tw` to the widest label + 3 and never accounts for
+  the title, so the width is asked for explicitly and labels are trimmed to it
+  -- a twelve-glyph TM/HM query would otherwise grow the hub off the screen.
 - **Rebuilt the search keyboard.** It had no frame; its header lines sat on a
   12px pitch the 8px font does not land on; and its `DEL` / `CLR` / `GO` /
   `EXIT` row was laid out on the same 16px pitch as the single-glyph letters,

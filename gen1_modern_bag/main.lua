@@ -244,19 +244,17 @@ local function drawBagMoney(list)
   love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Popup menus.
+-- Pop-up menus.
 --
--- Every menu this mod opens on top of the Bag -- ITEM OPTIONS, the TM/HM
--- filters and their pickers -- is a plain ListMenu, and ListMenu's full-screen
--- branch fills all 160x144 white, draws the title and the rows and paints no
--- frame at all. Four options were covering the game with an undecorated white
--- page.
+-- These are src/ui/Menu.lua, the engine's own framed menu widget: it draws the
+-- frame, the title on the top border and the more-arrow on the bottom one, and
+-- it owns the cursor, the scrolling and the input. A mod hands it a list of
+-- { label, onSelect } and a corner to put it in.
 --
--- They are drawn as a framed window over whatever opened them instead, which
--- is how Gen 1 draws its own menus. The engine keeps owning the menu: only
--- `draw` is replaced, so movement, wrapping, scrolling and onChoose stay the
--- engine's and the screen is still a real ListMenu for Gen1 Modern UI to
--- recognise.
+-- Up to 1.3.0 these were ListMenus with their `draw` replaced by a frame this
+-- mod painted itself, because ListMenu's full-screen branch fills all 160x144
+-- white and paints no frame at all. Menu is the widget that was wanted all
+-- along.
 local SCREEN_TILES_W = 20
 local SCREEN_TILES_H = 18
 
@@ -268,94 +266,6 @@ local WINDOW_LEFT_X = 8
 local WINDOW_TOP_Y = 8
 local WINDOW_BOTTOM_Y = 128
 local WINDOW_INNER_W = 144
-
-local POPUP_MAX_ROWS = 9
-local POPUP_MIN_INNER_TILES = 8
-
--- The frame, and nothing else: the title is on the frame's own top row.
-local POPUP_CHROME_TILES = 2
-
-local function popupVisibleRows(list)
-  return math.max(1, math.min(#(list.items or {}), POPUP_MAX_ROWS))
-end
-
--- Sized to its own contents, anchored to the bottom-right corner: the widest
--- row decides the width, the number of rows the height, so a four-option menu
--- is a four-option window.
-local function popupGeometry(list)
-  local Font = require("src.render.Font")
-  -- The title is on the border, between the corners, with a tile of clearance
-  -- at each end -- so it needs its own width plus two, and a narrower box
-  -- would run the padded title into a corner glyph.
-  local widest = Font.width(tostring(list.title or "")) + BORDER_LABEL_PAD * 2
-  for _, item in ipairs(list.items or {}) do
-    -- Rows are indented by the cursor column; the title is not.
-    local width = Font.width(tostring(item.label or "")) + 8
-    if width > widest then widest = width end
-  end
-  local inner = math.max(POPUP_MIN_INNER_TILES, math.ceil(widest / 8))
-  local tw = math.min(SCREEN_TILES_W, inner + 2)
-  local visible = popupVisibleRows(list)
-  local th = math.min(SCREEN_TILES_H, visible + POPUP_CHROME_TILES)
-  return {
-    tx = SCREEN_TILES_W - tw,
-    ty = SCREEN_TILES_H - th,
-    tw = tw,
-    th = th,
-    visible = visible,
-    -- Corners, and a tile of clearance inside each: the widest a title on
-    -- this box's border can be drawn.
-    titleWidth = (tw - 4) * 8,
-    labelWidth = (tw - 2) * 8 - 8,
-  }
-end
-
-local function drawPopupMenu(list)
-  local Font = require("src.render.Font")
-  local Theme = require("src.ui.Theme")
-  local items = list.items or {}
-  local geom = popupGeometry(list)
-  -- The engine scrolls against list.rows, so the window it scrolls for has to
-  -- be the window that is drawn.
-  list.rows = geom.visible
-
-  local index = math.max(1, math.min(list.index or 1, math.max(1, #items)))
-  local scroll = math.max(0, math.min(list.scroll or 0, math.max(0, #items - geom.visible)))
-  if index - scroll < 1 then scroll = index - 1 end
-  if index - scroll > geom.visible then scroll = index - geom.visible end
-
-  love.graphics.setColor(1, 1, 1, 1)
-  Font.drawBox(geom.tx, geom.ty, geom.tw, geom.th)
-  love.graphics.setColor(0, 0, 0, 1)
-
-  local x = (geom.tx + 1) * 8
-  drawBorderLabel(Font, fitLabel(Font, tostring(list.title or ""), geom.titleWidth),
-    geom.tx, geom.ty, geom.tw)
-
-  local y = (geom.ty + 1) * 8
-  for row = 1, geom.visible do
-    local item = items[scroll + row]
-    if item then
-      if scroll + row == index then Font.drawCode(Theme.cursor, x, y) end
-      Font.draw(fitLabel(Font, tostring(item.label or ""), geom.labelWidth), x + 8, y)
-    end
-    y = y + 8
-  end
-  if Theme.moreArrow and scroll + geom.visible < #items then
-    Font.drawCode(Theme.moreArrow, (geom.tx + geom.tw - 2) * 8, y - 8)
-  end
-  love.graphics.setColor(1, 1, 1, 1)
-end
-
-local function asPopupMenu(list)
-  if type(list) ~= "table" then return list end
-  -- The window covers only its own corner, so whatever opened it has to keep
-  -- drawing underneath.
-  list.isOpaque = false
-  list.rows = popupVisibleRows(list)
-  list.draw = drawPopupMenu
-  return list
-end
 
 -- RESULTS only exists while a search is loaded into it. Everything else is
 -- always in the ring.
@@ -1305,6 +1215,72 @@ function MachineNameSearch:draw()
 end
 
 
+-- Opening a Menu.
+--
+-- Menu knocks out exactly the title's width for it, so the rule ends flush
+-- against the first and last letter -- the frame appearing to touch them. A
+-- space at each end is what buys the clearance, and it is added here at the
+-- call site: a title is a catalog key elsewhere in the engine, and padding it
+-- inside the string would make the padding part of the key.
+--
+-- Menu grows tw to the widest label + 3 and never accounts for the title, so
+-- the width has to be asked for. The title starts a fixed three tiles in, so
+-- the padded title has to stay within tw - 4 or it runs into the top-right
+-- corner glyph -- the same defect at the other end.
+local MENU_LABEL_MARGIN = 3
+local MENU_TITLE_MARGIN = 4
+
+-- Four rows of options, opened clear of the pocket header on the item
+-- window's top border. Menu works its own height out from the rows.
+local ITEM_TOOLS_TY = 6
+
+local function menuTitle(title)
+  return " " .. tostring(title or "") .. " "
+end
+
+local function menuTiles(Font, text)
+  return math.ceil(Font.width(text) / 8)
+end
+
+local function menuWidth(Font, title, items)
+  local widest = 0
+  for _, item in ipairs(items) do
+    local tiles = menuTiles(Font, tostring(item.label or ""))
+    if tiles > widest then widest = tiles end
+  end
+  return math.min(SCREEN_TILES_W, math.max(
+    widest + MENU_LABEL_MARGIN,
+    menuTiles(Font, menuTitle(title)) + MENU_TITLE_MARGIN))
+end
+
+-- Labels are held to the width that was asked for: Menu sizes itself from the
+-- widest one, so a long label would otherwise grow the menu off the screen.
+local function fitMenuLabels(Font, items, tw)
+  local budget = (tw - MENU_LABEL_MARGIN) * 8
+  for _, item in ipairs(items) do
+    item.label = fitLabel(Font, tostring(item.label or ""), budget)
+  end
+end
+
+local function openMenu(game, title, items, opts)
+  opts = opts or {}
+  local Font = require("src.render.Font")
+  local Menu = require("src.ui.Menu")
+  local tw = opts.tw or menuWidth(Font, title, items)
+  fitMenuLabels(Font, items, tw)
+  local menu = Menu.new(game, items, {
+    -- Against the right edge, the corner Gen 1 opens a menu into.
+    tx = SCREEN_TILES_W - tw,
+    ty = opts.ty or 0,
+    tw = tw,
+    title = menuTitle(title),
+    maxVisible = opts.maxVisible,
+    onCancel = opts.onCancel,
+  })
+  game.stack:push(menu)
+  return menu
+end
+
 local function machineFilters(state)
   if type(state.machineFilters) ~= "table" then
     state.machineFilters = { query = "", type = "ANY", damageClass = "ANY" }
@@ -1340,95 +1316,143 @@ local function machineTypeRows(game, state)
   return rows
 end
 
+local MACHINE_SORT_LABELS = {
+  NUMBER = "NUMBER", NAME = "MOVE NAME",
+  POWER_DESC = "POWER HIGH", POWER_ASC = "POWER LOW",
+}
+
+-- The hub is a fixed seven rows whose labels carry the current filters, so
+-- they are rewritten in place rather than the menu being rebuilt: Menu sizes
+-- itself once, from the rows it was handed.
+local MACHINE_HUB_TW = SCREEN_TILES_W
+local MACHINE_HUB_TY = 1
+local MACHINE_PICKER_TY = 6
+local MACHINE_TYPE_MAX_VISIBLE = 5
+local MACHINE_HUB_LABEL_BUDGET = (MACHINE_HUB_TW - MENU_LABEL_MARGIN) * 8
+
 local function updateMachineHub(hub, bagList)
   local state = bagList.modernBag
   local filters = machineFilters(state)
-  local sortLabels = {
-    NUMBER = "NUMBER", NAME = "MOVE NAME",
-    POWER_DESC = "POWER HIGH", POWER_ASC = "POWER LOW",
+  local Font = require("src.render.Font")
+  local labels = {
+    "NAME: " .. (filters.query == "" and "ANY" or filters.query),
+    "TYPE: " .. filters.type,
+    "CLASS: " .. filters.damageClass,
+    "SORT: " .. (MACHINE_SORT_LABELS[state.machineSort] or "NUMBER"),
+    "RESULTS: " .. tostring(#machineFilteredRows(bagList.game, state)),
+    "RESET FILTERS",
+    "CANCEL",
   }
-  hub.items = {
-    { label = "NAME: " .. (filters.query == "" and "ANY" or filters.query), value = "name" },
-    { label = "TYPE: " .. filters.type, value = "type" },
-    { label = "CLASS: " .. filters.damageClass, value = "class" },
-    { label = "SORT: " .. (sortLabels[state.machineSort] or "NUMBER"), value = "sort" },
-    { label = "SHOW RESULTS (" .. tostring(#machineFilteredRows(bagList.game, state)) .. ")", value = "results" },
-    { label = "RESET FILTERS", value = "reset" },
-    { label = "CANCEL", value = "cancel" },
-  }
+  for i, label in ipairs(labels) do
+    local row = hub.items and hub.items[i]
+    -- The query can be twelve glyphs, so this is where a row gets too wide.
+    if row then row.label = fitLabel(Font, label, MACHINE_HUB_LABEL_BUDGET) end
+  end
 end
 
 local function openMachineSearch(bagList)
-  local ListMenu = require("src.ui.ListMenu")
   local state = bagList.modernBag
   state.swapId = nil
   bagList.hollowIndex = nil
+  local game = bagList.game
   local hub
-  hub = asPopupMenu(ListMenu.new(bagList.game, "TM HM SEARCH", {}, {
-    onChoose = function(choice, menu)
-      local filters = machineFilters(state)
-      if choice.value == "name" then
-        bagList.game.stack:push(MachineNameSearch.new(bagList.game, filters.query, function(query)
-          filters.query = query
+
+  -- keepOpen on every row that opens a picker: the hub has to still be there
+  -- when the picker closes, with its labels caught up.
+  local function picker(build)
+    return function()
+      build()
+      updateMachineHub(hub, bagList)
+    end
+  end
+
+  local function choices(values, labelFor, apply)
+    local rows = {}
+    for _, value in ipairs(values) do
+      rows[#rows + 1] = {
+        label = labelFor(value),
+        onSelect = function()
+          apply(value)
+          updateMachineHub(hub, bagList)
+        end,
+      }
+    end
+    return rows
+  end
+
+  local items = {
+    {
+      label = "", keepOpen = true,
+      onSelect = picker(function()
+        local filters = machineFilters(state)
+        game.stack:push(MachineNameSearch.new(game, filters.query, function(query)
+          machineFilters(state).query = query
           updateMachineHub(hub, bagList)
         end))
-      elseif choice.value == "type" then
-        local typeMenu
-        typeMenu = asPopupMenu(ListMenu.new(bagList.game, "MOVE TYPE", machineTypeRows(bagList.game, state), {
-          onChoose = function(row, current)
-            current:close()
-            filters.type = row.value
-            updateMachineHub(hub, bagList)
-          end,
-        }))
-        bagList.game.stack:push(typeMenu)
-      elseif choice.value == "class" then
-        local classRows = {
-          { label = "ANY CLASS", value = "ANY" },
-          { label = "PHYSICAL", value = "PHYSICAL" },
-          { label = "SPECIAL", value = "SPECIAL" },
-          { label = "STATUS", value = "STATUS" },
-        }
-        bagList.game.stack:push(asPopupMenu(ListMenu.new(bagList.game, "DAMAGE CLASS", classRows, {
-          onChoose = function(row, current)
-            current:close()
-            filters.damageClass = row.value
-            updateMachineHub(hub, bagList)
-          end,
-        })))
-      elseif choice.value == "sort" then
-        local sortRows = {
-          { label = "MACHINE NUMBER", value = "NUMBER" },
-          { label = "MOVE NAME", value = "NAME" },
-          { label = "POWER HIGH TO LOW", value = "POWER_DESC" },
-          { label = "POWER LOW TO HIGH", value = "POWER_ASC" },
-        }
-        bagList.game.stack:push(asPopupMenu(ListMenu.new(bagList.game, "SORT TM HM", sortRows, {
-          onChoose = function(row, current)
-            current:close()
-            setMachineSort(state, row.value)
-            refreshPocket(bagList, selectedId(bagList))
-            updateMachineHub(hub, bagList)
-          end,
-        })))
-      elseif choice.value == "results" then
-        hub:close()
+      end),
+    },
+    {
+      label = "", keepOpen = true,
+      onSelect = picker(function()
+        local values, labels = {}, {}
+        for _, row in ipairs(machineTypeRows(game, state)) do
+          values[#values + 1] = row.value
+          labels[row.value] = row.label
+        end
+        openMenu(game, "MOVE TYPE",
+          choices(values, function(v) return labels[v] end,
+            function(v) machineFilters(state).type = v end),
+          { ty = MACHINE_PICKER_TY, maxVisible = MACHINE_TYPE_MAX_VISIBLE })
+      end),
+    },
+    {
+      label = "", keepOpen = true,
+      onSelect = picker(function()
+        openMenu(game, "DAMAGE CLASS",
+          choices({ "ANY", "PHYSICAL", "SPECIAL", "STATUS" },
+            function(v) return v == "ANY" and "ANY CLASS" or v end,
+            function(v) machineFilters(state).damageClass = v end),
+          { ty = MACHINE_PICKER_TY })
+      end),
+    },
+    {
+      label = "", keepOpen = true,
+      onSelect = picker(function()
+        openMenu(game, "SORT TM HM",
+          choices({ "NUMBER", "NAME", "POWER_DESC", "POWER_ASC" },
+            function(v) return MACHINE_SORT_LABELS[v] end,
+            function(v)
+              setMachineSort(state, v)
+              refreshPocket(bagList, selectedId(bagList))
+            end),
+          { ty = MACHINE_PICKER_TY })
+      end),
+    },
+    {
+      label = "",
+      onSelect = function()
         showResults(bagList, {
           machines = true,
-          build = function(game, current) return machineFilteredRows(game, current) end,
+          build = function(g, current) return machineFilteredRows(g, current) end,
         })
-      elseif choice.value == "reset" then
+      end,
+    },
+    {
+      label = "", keepOpen = true,
+      onSelect = function()
         state.machineFilters = { query = "", type = "ANY", damageClass = "ANY" }
         setMachineSort(state, "NUMBER")
         refreshPocket(bagList, selectedId(bagList))
         updateMachineHub(hub, bagList)
-      elseif choice.value == "cancel" then
-        hub:close()
-      end
-    end,
-  }))
+      end,
+    },
+    { label = "" },
+  }
+
+  hub = openMenu(game, "TM HM SEARCH", items,
+    { tw = MACHINE_HUB_TW, ty = MACHINE_HUB_TY })
   updateMachineHub(hub, bagList)
-  bagList.game.stack:push(hub)
+  return hub
 end
 
 local function reorderWithinBag(item, list)
@@ -1470,38 +1494,43 @@ end
 
 local function openItemTools(item, list)
   if not item or not list or not list.modernBag then return end
-  local ListMenu = require("src.ui.ListMenu")
   local state = list.modernBag
   local id = item.value
   local favorite = state.favoriteSet[id] ~= nil
   local pinned = state.pinnedSet[id] ~= nil
-  local rows = {
-    { label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE", value = "favorite" },
-    { label = pinned and "UNPIN ITEM" or "PIN TO TOP", value = "pin" },
-    { label = "MOVE ITEM", value = "move" },
-    { label = "CANCEL", value = "cancel" },
-  }
-  list.game.stack:push(asPopupMenu(ListMenu.new(list.game, "ITEM OPTIONS", rows, {
-    onChoose = function(choice, menu)
-      menu:close()
-      if choice.value == "favorite" then
+
+  local function swapSound()
+    pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
+  end
+
+  -- Menu closes itself around onSelect unless the row asks to stay open, so
+  -- none of these close it by hand. Nothing here depends on which side of
+  -- onSelect that happens.
+  openMenu(list.game, "ITEM OPTIONS", {
+    {
+      label = favorite and "REMOVE FAVORITE" or "ADD FAVORITE",
+      onSelect = function()
         toggleOrderedItem(state.favoriteOrder, id)
         rebuildPreferenceIndexes(state)
         persistPreferences(state)
-        pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
+        swapSound()
         refreshPocket(list, id)
-      elseif choice.value == "pin" then
+      end,
+    },
+    {
+      label = pinned and "UNPIN ITEM" or "PIN TO TOP",
+      onSelect = function()
         toggleOrderedItem(state.pinnedOrder, id)
         rebuildPreferenceIndexes(state)
         persistPreferences(state)
         autoSortBag(list.game, state)
-        pcall(function() require("src.core.Sound").play(list.game.data, "Swap") end)
+        swapSound()
         refreshPocket(list, id)
-      elseif choice.value == "move" then
-        reorderWithinBag(item, list)
-      end
-    end,
-  })))
+      end,
+    },
+    { label = "MOVE ITEM", onSelect = function() reorderWithinBag(item, list) end },
+    { label = "CANCEL" },
+  }, { ty = ITEM_TOOLS_TY })
 end
 
 -- START. In swap mode the press lands the item being moved; otherwise it

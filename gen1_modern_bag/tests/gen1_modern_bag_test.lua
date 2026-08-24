@@ -117,6 +117,31 @@ package.preload["src.core.Sound"] = function()
   return { play = function() end }
 end
 
+-- src/ui/Menu.lua, the engine's framed menu widget. It draws its own frame,
+-- title and cursor and owns the input, so a test can only see what it was
+-- handed. Modelled on the stub the shipped mods that use it carry.
+package.preload["src.ui.Menu"] = function()
+  local M = {}
+  function M.new(game, items, opts)
+    local self = { game = game, items = items or {}, opts = opts or {} }
+    self.title = self.opts.title
+    function self:close()
+      if game.stack:top() == self then game.stack:pop() end
+    end
+    -- Menu closes itself around onSelect unless the item asks to stay open.
+    -- Nothing here depends on which side of onSelect that happens.
+    function self:choose(i)
+      local item = self.items[i]
+      assert(item, "no menu row " .. tostring(i))
+      if not item.keepOpen then self:close() end
+      if item.onSelect then item.onSelect() end
+      return item
+    end
+    return self
+  end
+  return M
+end
+
 package.preload["src.ui.ListMenu"] = function()
   local ListMenu = {}
   function ListMenu.new(game, title, items, opts)
@@ -292,10 +317,12 @@ bag.index = 2
 pressed.start = true
 bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
-assert(tools.title == "ITEM OPTIONS")
-assert(tools.isOpaque == false, "ITEM OPTIONS must be a window over the Bag, not a page")
+-- Padded, so Menu's exactly-the-title-wide knock-out leaves the rule a tile
+-- clear of the letters at each end.
+assert(tools.opts.title == " ITEM OPTIONS ",
+  "wrong ITEM OPTIONS title: " .. tostring(tools.opts.title))
 assert(tools.items[1].label == "ADD FAVORITE")
-tools.opts.onChoose(tools.items[1], tools)
+tools:choose(1)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
 assert(mod.exports.isFavorite("POTION"), "favorite export returned false")
 
@@ -316,7 +343,7 @@ pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "pin tools did not open")
 assert(tools.items[2].label == "PIN TO TOP")
-tools.opts.onChoose(tools.items[2], tools)
+tools:choose(2)
 assert(saved.pinned_items[1] == "POTION", "pin was not persisted")
 assert(mod.exports.isPinned("POTION"), "pin export returned false")
 bag:update(0)
@@ -555,7 +582,7 @@ bag.index = swordsIndex
 pressed.start = true
 bag:update(0)
 tools = assert(stack:top(), "machine item tools did not open")
-tools.opts.onChoose(tools.items[2], tools)
+tools:choose(2)
 bag:update(0)
 assert(bag.items[1].value == "TM_SWORDS_DANCE", "pinned machine must stay above power sorting")
 
@@ -642,94 +669,81 @@ stack:pop()
 pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
-assert(hub.title == "TM HM SEARCH", "wrong TM/HM search title")
+assert(hub.opts.title == " TM HM SEARCH ", "wrong TM/HM search title")
+assert(hub.items[1].label:find("NAME:", 1, true), "move-name filter missing")
 assert(hub.items[2].label:find("TYPE:", 1, true), "type filter missing")
 assert(hub.items[3].label:find("CLASS:", 1, true), "damage-class filter missing")
 assert(hub.items[4].label:find("SORT:", 1, true), "power sort missing")
 
--- Menus this mod opens are framed windows over the Bag, not the undecorated
--- white full-screen page ListMenu paints for itself. They are sized to their
--- own contents, anchored to the bottom-right corner, and titled on their own
--- top border rather than on a row of the interior.
-local function popupPaint(menu)
-  resetPaint()
-  menu:draw()
-  return painted.boxes[1], painted.text, painted.codes
+-- Menus this mod opens are src/ui/Menu.lua, the engine's own framed menu
+-- widget. It draws the frame, the title on its top border and the cursor, so
+-- what a test can check is what it was handed: the geometry asked for, the
+-- padding on the title, and the rows.
+local MENU_LABEL_MARGIN = 3   -- Menu grows tw to the widest label + 3
+local MENU_TITLE_START = 3    -- and starts the title a fixed three tiles in
+
+local function menuTiles(text) return utf8.len(text) or #text end
+
+-- Menu knocks out exactly the title's width, so the rule would end flush
+-- against the first and last letter. The space at each end is the clearance.
+local function assertPaddedTitle(menu, name)
+  local title = menu.opts.title
+  assert(title, name .. " was opened without a title")
+  assert(title == " " .. name .. " ",
+    ("%s's title is not padded for its border: %q"):format(name, title))
+  -- The title runs from tile tx+3, so it has to end before the far corner.
+  assert(menuTiles(title) <= menu.opts.tw - MENU_TITLE_START - 1,
+    ("%s is %d tiles wide, too narrow for its padded title")
+      :format(name, menu.opts.tw))
 end
 
-assert(hub.isOpaque == false, "a popup menu must let the Bag draw underneath it")
-local hubBox, hubText = popupPaint(hub)
-assert(hubBox, "the TM/HM hub painted no window")
-assert(hubBox.tx + hubBox.tw == 20 and hubBox.ty + hubBox.th == 18,
-  "the popup is not anchored to the bottom-right corner")
-assert(hubBox.tw < 20 or hubBox.th < 18, "the popup still covers the whole screen")
--- The frame, and one row per option. The title costs no interior row now.
-assert(hubBox.th == #hub.items + 2,
-  "the window is not sized to its options: th = " .. hubBox.th)
-assert(hubText[1].text == "TM HM SEARCH", "the popup did not draw its title")
-
--- The title is on the border row, with the line knocked out under it and
--- surviving either side.
-local borderY = hubBox.ty * 8
-assert(hubText[1].y == borderY, "the title is not on the window's top border")
-assert(clearedAt(hubText[1].x, borderY), "the title was drawn onto the border line")
-
--- A tile of clearance at each end, and never onto a corner glyph. The box is
--- sized for it: a title wider than tw - 4 tiles would have nowhere to put its
--- clearance and would run into the corner -- the same defect at the other end.
-local hubTitleRight = hubText[1].x + (utf8.len(hubText[1].text) or 0) * 8
-assert(clearedAt(hubText[1].x - 8, borderY),
-  "the rule runs up flush against the first letter of the popup title")
-assert(clearedAt(hubTitleRight, borderY),
-  "the rule restarts flush against the last letter of the popup title")
-assert(not clearedAt(hubBox.tx * 8, borderY)
-  and not clearedAt((hubBox.tx + hubBox.tw - 1) * 8, borderY),
-  "the popup title's knock-out rubbed out a corner glyph")
-assert((utf8.len(hubText[1].text) or 0) <= hubBox.tw - 4,
-  "the popup is too narrow for its own padded title")
-
--- The options start on the first interior row, one per row, indented by the
--- cursor column.
-local firstRowY = (hubBox.ty + 1) * 8
-local optionX = (hubBox.tx + 1) * 8 + 8
-for i = 2, #hubText do
-  assert(hubText[i].y == firstRowY + (i - 2) * 8, "popup row " .. i .. " is off the grid")
-  assert(hubText[i].x == optionX, "popup row " .. i .. " is not indented for the cursor")
-  local right = hubText[i].x + (utf8.len(hubText[i].text) or #hubText[i].text) * 8
-  assert(right <= (hubBox.tx + hubBox.tw - 1) * 8,
-    ("popup row %q overruns the window"):format(hubText[i].text))
+-- And a label wider than the width asked for would grow the menu off the
+-- screen, because Menu sizes itself from the widest label.
+local function assertFits(menu, name)
+  assert(menu.opts.tw <= 20 and menu.opts.tx >= 0
+    and menu.opts.tx + menu.opts.tw == 20,
+    name .. " is not anchored inside the right edge of the screen")
+  for i, row in ipairs(menu.items) do
+    assert(menuTiles(row.label) <= menu.opts.tw - MENU_LABEL_MARGIN,
+      ("%s row %d (%q) would grow the menu past the width it asked for")
+        :format(name, i, row.label))
+  end
 end
 
--- ITEM OPTIONS is the popup whose title, once padded, is wider than any of
--- its option labels -- so it is the one that catches a box sized without
--- counting the clearance.
+assertPaddedTitle(hub, "TM HM SEARCH")
+assertFits(hub, "TM HM SEARCH")
+assert(#hub.items == 7, "the TM/HM hub is not seven rows")
+-- The rows that open a picker have to leave the hub standing under it.
+for i = 1, 4 do
+  assert(hub.items[i].keepOpen, "TM/HM hub row " .. i .. " closes the hub behind its picker")
+end
+assert(not hub.items[5].keepOpen, "the RESULTS row should close the hub")
+assert(hub.items[7].onSelect == nil, "CANCEL should do nothing but close")
+
+-- ITEM OPTIONS is the menu whose padded title is wider than any of its option
+-- labels, so it is the one that catches a width asked for without counting it.
 pressed.start = true
 bag:update(0)
 local optionsMenu = assert(stack:top(), "START did not open ITEM OPTIONS")
-local optionsBox, optionsText = popupPaint(optionsMenu)
-assert(optionsText[1].text == "ITEM OPTIONS", "wrong popup on top")
-assert((utf8.len(optionsText[1].text) or 0) <= optionsBox.tw - 4,
-  ("ITEM OPTIONS is %d tiles wide, too narrow for its padded title")
-    :format(optionsBox.tw))
-assert(clearedAt(optionsText[1].x - 8, optionsBox.ty * 8)
-  and not clearedAt(optionsBox.tx * 8, optionsBox.ty * 8),
-  "ITEM OPTIONS' title has no clearance, or ate a corner glyph")
+assertPaddedTitle(optionsMenu, "ITEM OPTIONS")
+assertFits(optionsMenu, "ITEM OPTIONS")
 optionsMenu:close()
 
--- Labels too wide for their window are trimmed by glyphs, not by bytes: a
--- label can carry a multi-byte character -- POKe with the accent, the currency
--- sign -- or a Gen 1 control code, and half of one of those is not a
--- character. Byte-trimming a run of them leaves an invalid tail.
-hub.items[1].label = "A" .. ("\u{00e9}"):rep(30)
-local _, wideText = popupPaint(hub)
-local trimmed = wideText[2]
-assert(trimmed, "the popup drew no rows")
-assert(utf8.len(trimmed.text), "a label was trimmed mid-character: " .. trimmed.text)
-assert(utf8.len(trimmed.text) < 30, "the label was not trimmed to the window at all")
-local trimmedRight = trimmed.x + utf8.len(trimmed.text) * 8
-assert(trimmedRight <= (hubBox.tx + hubBox.tw - 1) * 8,
-  "the trimmed label still overruns the window")
-hub.opts.onChoose({ value = "reset" }, hub)
+-- Labels too wide for the menu are trimmed by glyphs, not by bytes: a label
+-- can carry a multi-byte character -- POKe with the accent, the currency sign
+-- -- or a Gen 1 control code, and half of one of those is not a character.
+-- The NAME row is the one that grows, because it carries the query.
+local liveFilters = bag.modernBag.machineFilters
+liveFilters.query = ("\u{00e9}"):rep(30)
+hub:choose(2)                       -- opens the TYPE picker, and relabels
+assert(stack:top() ~= hub, "the TYPE picker did not open")
+stack:top():close()
+assert(utf8.len(hub.items[1].label),
+  "a label was trimmed mid-character: " .. hub.items[1].label)
+assertFits(hub, "TM HM SEARCH")
+liveFilters.query = ""
+hub:choose(2)
+stack:top():close()
 
 -- The search keyboard. 1.1.1 drew it as a bare white page and laid the
 -- DEL/CLR/GO/EXIT row out on the same 16px pitch as the single-glyph letters,
@@ -896,12 +910,12 @@ bag:update(0)
 pressed.select = true
 bag:update(0)
 local filters = assert(stack:top(), "the TM/HM hub did not open")
-local showRow
-for _, row in ipairs(filters.items) do
-  if row.value == "results" then showRow = row end
+local showRowIndex
+for i, row in ipairs(filters.items) do
+  if row.label:find("RESULTS", 1, true) then showRowIndex = i end
 end
-assert(showRow, "SHOW RESULTS is missing from the TM/HM hub")
-filters.opts.onChoose(showRow, filters)
+assert(showRowIndex, "the RESULTS row is missing from the TM/HM hub")
+filters:choose(showRowIndex)
 assert(stack:top() == nil, "the TM/HM filters pushed a page of their own")
 assert(bag.title == "RESULTS", "the TM/HM filters did not fill the results page")
 assert(#bag.items == 4, "wrong TM/HM result count: " .. #bag.items)
