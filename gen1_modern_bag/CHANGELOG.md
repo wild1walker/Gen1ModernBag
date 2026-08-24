@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.2.0
+
+- **SELECT now searches and START now opens ITEM OPTIONS.** The two were the
+  other way round. In the TM/HM pocket SELECT opens that pocket's filter hub,
+  which is its search; START opens the item tools there too.
+- Removed the full-width text box under the item window. 1.1.1 put the money
+  line and a legend for START and SELECT in it, and the bar read as a second
+  screen rather than as part of the Bag.
+- The money is now drawn in a window sized to the amount, tucked under the item
+  window's bottom-right corner. It starts a tile row below that window instead
+  of sharing its bottom border: sharing puts two frames on one tile, and a box
+  that also owns tile 19,12 draws its own top-right corner where the item
+  window's bottom-right corner belongs.
+- Dropped the on-screen legend entirely. Nothing spells out START and SELECT
+  any more; the labels are still published for Gen1 Modern UI, which puts a
+  touch button on each.
+- The TM/HM sort mode is no longer printed on the Bag. It is a row in the TM/HM
+  tools, `SORT: NUMBER`, and is still published as `machineSortLabel`.
+- **ITEM OPTIONS is a window over the Bag instead of a full-screen page.** It
+  and the TM/HM filter hub, MOVE TYPE, DAMAGE CLASS and SORT TM HM are plain
+  `ListMenu`s, and `ListMenu`'s full-screen branch fills all 160x144 white and
+  paints no frame at all: four options were covering the game with an
+  undecorated white page. They are now framed windows sized to their own
+  contents and anchored to the bottom-right corner. Only `draw` is replaced, so
+  movement, scrolling and choosing stay the engine's and the screens are still
+  real `ListMenu`s for Gen1 Modern UI to recognise.
+- **Rebuilt the search keyboard.** It had no frame; its header lines sat on a
+  12px pitch the 8px font does not land on; and its `DEL` / `CLR` / `GO` /
+  `EXIT` row was laid out on the same 16px pitch as the single-glyph letters,
+  so the four words were drawn on top of one another and read as `DECLBOEXIT`.
+  It is now one framed window with everything on the 8px grid, and the action
+  row is measured and centred so no two words can share a column whatever the
+  font. The TM/HM move-name keyboard is the same screen and gets the same fix.
+- The match count on Quick Search is recomputed when the query changes rather
+  than on every frame.
+- No change to pocket contents, sorting, Favorites, pins, search results or
+  inventory behaviour.
+
+---
+
 ## 1.1.1
 
 - Fixed the pocket header, which 1.1.0 never drew. The header was written to

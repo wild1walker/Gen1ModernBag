@@ -147,12 +147,13 @@ local BagMenu = require("src.ui.BagMenu")
 local bag = BagMenu.new(game, {})
 assert(bag.modernBag, "bag decoration missing")
 assert(bag.modernBag.searchAvailable == true, "search availability marker missing")
-assert(bag.modernBag.startActionLabel == "SEARCH", "normal pocket search label missing")
+assert(bag.modernBag.startActionLabel == "TOOLS", "item tools label missing")
+assert(bag.modernBag.selectActionLabel == "SEARCH", "normal pocket search label missing")
 
--- Non-TM pocket START opens a real grid-keyboard search state.  Its screen
+-- Non-TM pocket SELECT opens a real grid-keyboard search state.  Its screen
 -- id contains "Nickname" and exposes glyphs/grid/row/col so Gen1 Modern UI
 -- 0.8.1+ recognizes it through the native naming-keyboard presenter.
-pressed.start = true
+pressed.select = true
 bag:update(0)
 local quick = assert(stack:top(), "Quick Search did not open")
 assert(quick.screenId == "ModernBagNicknameSearch", "Quick Search screen id missing")
@@ -178,7 +179,8 @@ assert(stack:top() ~= quick, "Quick Search did not close on B with empty query")
 -- TM/HM pocket Y/I opens the custom move information screen.
 bag.modernBag.pocket = 4
 bag:update(0)
-assert(bag.modernBag.startActionLabel == "FILTER", "TM/HM filter label missing")
+assert(bag.modernBag.startActionLabel == "TOOLS", "TM/HM item tools label missing")
+assert(bag.modernBag.selectActionLabel == "FILTER", "TM/HM filter label missing")
 assert(bag.items[1] and bag.items[1].value == "TM_FLAMETHROWER",
   "TM/HM pocket did not refresh")
 pressed.gen1_modern_bag_move_info = true
@@ -193,9 +195,9 @@ assert(infoModel.rows[2].value == "FIRE", "Move Information type missing")
 assert(infoDesc.actions.back(game, info), "Move Information back failed")
 assert(stack:top() ~= info, "Move Information did not close")
 
--- TM/HM pocket START opens the standard filter hub; NAME then opens the
+-- TM/HM pocket SELECT opens the standard filter hub; NAME then opens the
 -- same native naming-keyboard shape, with APPLY as its semantic action.
-pressed.start = true
+pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
 assert(hub.title == "TM HM SEARCH", "wrong TM/HM search hub")

@@ -256,11 +256,14 @@ assert(bag.repeatDelay == 10 and bag.repeatRate == 2, "fast hold-scroll timing i
 assert(bag.items[1].value == "ANTIDOTE", "automatic alphabetical sorting failed")
 assert(bag.items[2].value == "POTION", "medicine row missing")
 
--- Add POTION to Favorites through SELECT -> ITEM OPTIONS.
+-- Add POTION to Favorites through START -> ITEM OPTIONS. START opens the
+-- tools and SELECT opens the search; before 1.2.0 it was the other way round.
 bag.index = 2
-bag.onSelectKey(bag.items[2], bag)
+pressed.start = true
+bag:update(0)
 local tools = assert(stack:top(), "item tools did not open")
 assert(tools.title == "ITEM OPTIONS")
+assert(tools.isOpaque == false, "ITEM OPTIONS must be a window over the Bag, not a page")
 assert(tools.items[1].label == "ADD FAVORITE")
 tools.opts.onChoose(tools.items[1], tools)
 assert(saved.favorite_items[1] == "POTION", "favorite was not persisted")
@@ -279,7 +282,8 @@ local potionIndex
 for i, row in ipairs(bag.items) do if row.value == "POTION" then potionIndex = i end end
 assert(potionIndex, "potion missing before pin")
 bag.index = potionIndex
-bag.onSelectKey(bag.items[potionIndex], bag)
+pressed.start = true
+bag:update(0)
 tools = assert(stack:top(), "pin tools did not open")
 assert(tools.items[2].label == "PIN TO TOP")
 tools.opts.onChoose(tools.items[2], tools)
@@ -362,67 +366,78 @@ assert(name and name.text == "TM HM",
 assert(ballsOpen.title == "TM HM",
   "pocket title did not follow the pocket switch: " .. tostring(ballsOpen.title))
 
--- The footer is the header's twin: the item-box path paints no footer either,
--- so the control hints and the money line only reach the screen because the
--- Bag draws them into the standard bottom text box.
-local FOOTER_MAX_COLS = 18   -- Theme.textBox.maxCols
+-- The money window is the header's twin: the item-box path paints no footer
+-- either, so the amount only reaches the screen because the Bag draws it.
+--
+-- 1.1.1 drew it in the standard bottom text box -- a full-width white bar
+-- carrying the amount and a legend for START and SELECT. The legend is gone
+-- and the bar with it; what is left is a window sized to the amount, tucked
+-- under the item window's bottom-right corner.
+local ITEM_BOX_RIGHT_TX = 19   -- LIST_MENU_BOX is tiles 4,2-19,12
+local ITEM_BOX_BOTTOM_TY = 12
+local MONEY_TEXT_Y = 112
 
-local function footerPaint(list)
+local function moneyPaint(list)
   painted.text, painted.codes, painted.boxes = {}, {}, {}
   list:draw()
   local box
   for _, b in ipairs(painted.boxes) do
-    if b.ty == 12 then box = b end
+    if b.ty > ITEM_BOX_BOTTOM_TY then box = b end
   end
-  local lines = {}
+  local below = {}
   for _, call in ipairs(painted.text) do
-    if call.y >= 104 then lines[#lines + 1] = call end
+    if call.y >= 104 then below[#below + 1] = call end
   end
-  table.sort(lines, function(a, b) return a.y < b.y end)
-  return box, lines
+  table.sort(below, function(a, b) return a.y < b.y end)
+  return box, below
 end
 
--- TM/HM: three hints, one per line, in the box's top three interior rows.
-local box, lines = footerPaint(ballsOpen)
-assert(box and box.tx == 0 and box.tw == 20 and box.th == 6,
-  "the footer did not paint the standard bottom text box")
-assert(#lines == 3, "expected three footer lines, painted " .. #lines)
-assert(lines[1].text == "START FILTER" and lines[2].text == "Y/I INFO"
-  and lines[3].text == "SORT NUMBER",
-  "wrong TM/HM footer: " .. lines[1].text .. " / " .. lines[2].text .. " / " .. lines[3].text)
-for i, line in ipairs(lines) do
-  assert(line.x == 8, "footer line " .. i .. " is not at x = 8")
-  assert(line.y == 104 + (i - 1) * 8, "footer line " .. i .. " is on the wrong row")
-end
+local box, below = moneyPaint(ballsOpen)
+assert(box, "the money window was not painted")
+assert(box.th == 3, "the money window holds one interior row, not " .. (box.th - 2))
+assert(#below == 1, "the money window should carry the amount and nothing else, painted " .. #below)
+assert(below[1].text == "¥1234", "wrong money line: " .. below[1].text)
+-- Sized to the amount: five glyphs plus the two frame columns.
+assert(box.tw == 7, "the money window is not sized to the amount: tw = " .. box.tw)
+assert(box.tx + box.tw - 1 == ITEM_BOX_RIGHT_TX,
+  "the money window is not flush with the item window's right edge: tx = " .. box.tx)
+assert(below[1].x == (box.tx + 1) * 8 and below[1].y == MONEY_TEXT_Y,
+  "the amount is not on the window's interior row")
+-- It starts below the item window rather than redrawing its bottom border:
+-- sharing tile 19,12 would replace that window's corner with this one's.
+assert(box.ty == ITEM_BOX_BOTTOM_TY + 1,
+  "the money window overlaps the item window's frame: ty = " .. box.ty)
 
--- Every pocket's footer has to fit the box, on every line. "SEL TOOLS  ¥%d"
--- is the one that grows: at the Gen 1 money cap it is exactly eighteen.
+-- Every pocket paints the amount, and the window stays on screen at the Gen 1
+-- money cap, which is the widest it can get.
 game.save.money = 999999
 for pocket = 1, 7 do
   ballsOpen.modernBag.pocket = pocket
   ballsOpen:update(0)
-  local _, painted_lines = footerPaint(ballsOpen)
-  assert(#painted_lines > 0, "pocket " .. pocket .. " painted no footer")
-  for _, line in ipairs(painted_lines) do
-    -- Columns, not bytes: the ¥ in the money line is one glyph and two bytes.
-    local cols = utf8.len(line.text) or #line.text
-    assert(cols <= FOOTER_MAX_COLS,
-      ("footer line %q is %d columns, over the %d the box holds")
-        :format(line.text, cols, FOOTER_MAX_COLS))
-  end
-  assert(#painted_lines <= 4, "the footer box holds four rows, not " .. #painted_lines)
+  local capped, lines = moneyPaint(ballsOpen)
+  assert(capped, "pocket " .. pocket .. " painted no money window")
+  assert(#lines == 1 and lines[1].text == "¥999999",
+    "pocket " .. pocket .. " painted the wrong money line")
+  assert(capped.tx >= 0 and capped.tx + capped.tw <= 20,
+    "the money window ran off the screen: tx = " .. capped.tx .. " tw = " .. capped.tw)
+  -- Columns, not bytes: the ¥ is one glyph and two bytes.
+  local cols = utf8.len(lines[1].text) or #lines[1].text
+  assert(cols <= capped.tw - 2,
+    ("%q is %d columns, over the %d the window holds"):format(lines[1].text, cols, capped.tw - 2))
 end
 game.save.money = 1234
 ballsOpen.modernBag.pocket = 4
 ballsOpen:update(0)
 
--- POWER DESC is the widest sort label, and "SORT POWER DESC" is fifteen.
+-- The sort mode is no longer spelled out on the Bag -- it is a row in the
+-- TM/HM tools -- but it is still published for Gen1 Modern UI to present.
 ballsOpen.modernBag.machineSort = "POWER_DESC"
 ballsOpen:update(0)
-local _, sortLines = footerPaint(ballsOpen)
-assert(sortLines[3] and sortLines[3].text == "SORT POWER DESC",
-  "wrong sort line: " .. tostring(sortLines[3] and sortLines[3].text))
-assert(utf8.len(sortLines[3].text) <= FOOTER_MAX_COLS, "the widest sort label overruns the box")
+assert(ballsOpen.modernBag.machineSortLabel == "POWER DESC",
+  "wrong sort label: " .. tostring(ballsOpen.modernBag.machineSortLabel))
+local _, sortLines = moneyPaint(ballsOpen)
+assert(#sortLines == 1 and sortLines[1].text:find("¥", 1, true),
+  "the TM/HM pocket painted more than the amount below the item window")
 ballsOpen.modernBag.machineSort = "NUMBER"
 ballsOpen:update(0)
 assert(saved.last_pocket == "machines", "last-used pocket was not persisted")
@@ -480,7 +495,8 @@ local swordsIndex
 for i, row in ipairs(bag.items) do if row.value == "TM_SWORDS_DANCE" then swordsIndex = i end end
 assert(swordsIndex, "swords dance missing")
 bag.index = swordsIndex
-bag.onSelectKey(bag.items[swordsIndex], bag)
+pressed.start = true
+bag:update(0)
 tools = assert(stack:top(), "machine item tools did not open")
 tools.opts.onChoose(tools.items[2], tools)
 bag:update(0)
@@ -493,14 +509,113 @@ local infoScreen = assert(stack:top(), "move information screen did not open")
 assert(infoScreen.info and infoScreen.info.moveId == "SWORDS_DANCE", "move information targeted the wrong machine")
 stack:pop()
 
--- START in the TM/HM pocket opens the dedicated filter/sort hub.
-pressed.start = true
+-- SELECT in the TM/HM pocket opens the dedicated filter/sort hub: it is that
+-- pocket's search, and SELECT is the search key on every pocket.
+pressed.select = true
 bag:update(0)
 local hub = assert(stack:top(), "TM/HM search hub did not open")
 assert(hub.title == "TM HM SEARCH", "wrong TM/HM search title")
 assert(hub.items[2].label:find("TYPE:", 1, true), "type filter missing")
 assert(hub.items[3].label:find("CLASS:", 1, true), "damage-class filter missing")
 assert(hub.items[4].label:find("SORT:", 1, true), "power sort missing")
+
+-- Menus this mod opens are framed windows over the Bag, not the undecorated
+-- white full-screen page ListMenu paints for itself. They are sized to their
+-- own contents and anchored to the bottom-right corner.
+local function popupPaint(menu)
+  painted.text, painted.codes, painted.boxes = {}, {}, {}
+  menu:draw()
+  return painted.boxes[1], painted.text, painted.codes
+end
+
+assert(hub.isOpaque == false, "a popup menu must let the Bag draw underneath it")
+local hubBox, hubText = popupPaint(hub)
+assert(hubBox, "the TM/HM hub painted no window")
+assert(hubBox.tx + hubBox.tw == 20 and hubBox.ty + hubBox.th == 18,
+  "the popup is not anchored to the bottom-right corner")
+assert(hubBox.tw < 20 or hubBox.th < 18, "the popup still covers the whole screen")
+-- Frame, title row, blank row, then one row per option.
+assert(hubBox.th == #hub.items + 4,
+  "the window is not sized to its options: th = " .. hubBox.th)
+assert(hubText[1].text == "TM HM SEARCH", "the popup did not draw its title")
+-- The title is on the first interior row; the options start two rows below it,
+-- one per row, indented by the cursor column.
+local titleY = (hubBox.ty + 1) * 8
+assert(hubText[1].y == titleY, "the title is not on the first interior row")
+assert(hubText[2].y == titleY + 16, "the options do not start below a blank row")
+assert(hubText[2].x == hubText[1].x + 8, "the options are not indented for the cursor")
+for i = 2, #hubText do
+  assert(hubText[i].y == titleY + 16 + (i - 2) * 8, "popup row " .. i .. " is off the grid")
+  local right = hubText[i].x + (utf8.len(hubText[i].text) or #hubText[i].text) * 8
+  assert(right <= (hubBox.tx + hubBox.tw - 1) * 8,
+    ("popup row %q overruns the window"):format(hubText[i].text))
+end
+
+-- The search keyboard. 1.1.1 drew it as a bare white page and laid the
+-- DEL/CLR/GO/EXIT row out on the same 16px pitch as the single-glyph letters,
+-- so the four words were drawn on top of one another and read as "DECLBOEXIT".
+bag.modernBag.pocket = 2
+bag:update(0)
+pressed.select = true
+bag:update(0)
+local keyboard = assert(stack:top(), "SELECT did not open Quick Search")
+assert(keyboard.screenId == "ModernBagNicknameSearch", "SELECT opened the wrong screen")
+
+painted.text, painted.codes, painted.boxes = {}, {}, {}
+keyboard:draw()
+assert(#painted.boxes == 1, "the keyboard should be one framed window")
+local kb = painted.boxes[1]
+assert(kb.tx == 0 and kb.ty == 0 and kb.tw == 20 and kb.th == 18,
+  "the keyboard window does not frame the screen")
+
+-- A 20x18 window's interior is columns 8..152 and rows 8..128.
+local KB_LEFT, KB_RIGHT, KB_TOP, KB_BOTTOM = 8, 152, 8, 128
+local function textRight(call)
+  return call.x + (utf8.len(call.text) or #call.text) * 8
+end
+
+local byRow = {}
+for _, call in ipairs(painted.text) do
+  assert(call.y % 8 == 0, ("%q is off the 8px grid at y = %d"):format(call.text, call.y))
+  assert(call.y >= KB_TOP and call.y <= KB_BOTTOM,
+    ("%q is outside the window at y = %d"):format(call.text, call.y))
+  assert(call.x >= KB_LEFT, ("%q starts left of the window"):format(call.text))
+  assert(textRight(call) <= KB_RIGHT, ("%q overruns the window"):format(call.text))
+  byRow[call.y] = byRow[call.y] or {}
+  table.insert(byRow[call.y], call)
+end
+
+-- Nothing on any row may start before the word to its left has ended.
+for y, calls in pairs(byRow) do
+  table.sort(calls, function(a, b) return a.x < b.x end)
+  for i = 2, #calls do
+    assert(calls[i].x >= textRight(calls[i - 1]),
+      ("%q and %q overlap on row %d"):format(calls[i - 1].text, calls[i].text, y))
+  end
+end
+
+-- All four action words survive, on one row of their own.
+local actions = {}
+for _, call in ipairs(byRow[104] or {}) do actions[#actions + 1] = call.text end
+table.sort(actions)
+assert(table.concat(actions, " ") == "CLR DEL EXIT GO",
+  "the action row is not DEL/CLR/GO/EXIT: " .. table.concat(actions, " "))
+
+-- The letters keep a cell each, on the 16px pitch, with the cursor drawn in
+-- the column to the left of the key it sits on.
+local letters = byRow[40] or {}
+table.sort(letters, function(a, b) return a.x < b.x end)
+assert(#letters == 9 and letters[1].text == "A" and letters[9].text == "I",
+  "the first keyboard row is not A-I")
+for i, call in ipairs(letters) do
+  assert(call.x == 16 + (i - 1) * 16, "letter " .. call.text .. " is off the cell pitch")
+end
+assert(#painted.codes == 1, "the keyboard should draw exactly one cursor")
+assert(painted.codes[1].x == 8 and painted.codes[1].y == 40,
+  "the cursor is not in the column left of the first key")
+keyboard:close()
+
+print("gen1_modern_bag_search_keyboard_test: ok")
 
 print("gen1_modern_bag_tm_search_test: ok")
 

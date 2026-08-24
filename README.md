@@ -27,7 +27,8 @@ below it.
 
 Essentially all of the functionality described here is upstream's work. The
 changes in Gen1ModernBag are a corrected machine-label width — one constant —
-and the arrowed pocket header, both described under
+the arrowed pocket header, and the presentation of the money line and of the
+menus this mod draws over the Bag, all described under
 [The changes from upstream](#the-changes-from-upstream).
 
 This is an independent, parallel project. It is not endorsed by or affiliated
@@ -106,29 +107,50 @@ The geometry is the `HEADER_*` constants at the top of
 [`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua). Labels wider than the
 field are trimmed to fit, so the arrows are never pushed out of the box.
 
-### Footer
+### Money, and the menus drawn over the Bag
 
-The control hints and the money line had the same problem and are fixed the
-same way. `ListMenu:draw` paints a footer only in the branch the Bag returns
-before reaching, so `START SEARCH`, `SEL TOOLS` and the money were set on
-`list.footer` and never drawn — in 1.1.0 and in every release before it.
+The control hints and the money line had the same problem as the header and
+1.1.1 fixed it the same way: `ListMenu:draw` paints a footer only in the branch
+the Bag returns before reaching, so `START SEARCH`, `SEL TOOLS` and the money
+were set on `list.footer` and never drawn. 1.1.1 put them in the standard
+bottom text box, `TEXT_BOX` at tiles 0,12–19,17 — a full-width white bar under
+the item window. It read as a second screen rather than as part of the Bag, and
+most of what it carried was a legend for two buttons.
 
-They now go in the standard bottom text box, `TEXT_BOX` at tiles 0,12–19,17.
-Its top row is the row `LIST_MENU_BOX` ends on, which is how the two stack in
-vanilla when a message opens under the item list. The interior holds four 8px
-rows from y = 104, and the block is centred in them: a two-line footer sits on
-the middle two.
+1.2.0 drops the legend and the bar with it. What is left is the amount, in a
+window sized to it and tucked under the item window's bottom-right corner. It
+cannot go inside that window: `LIST_MENU_BOX` has nine interior rows and the
+Bag spends every one of them, on the pocket header plus four items drawn
+name-over-quantity. The window starts on tile row 13 rather than sharing row 12
+the way the full-width box did — sharing puts two frames on one tile, and a box
+that also owns tile 19,12 draws its own top-right corner where the item
+window's bottom-right corner belongs. A row lower, the two borders meet without
+either being redrawn. The geometry is the `MONEY_*` constants in
+[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua).
 
-The box is eighteen columns wide, so the footer text is one hint per line —
-`START FILTER  Y/I INFO` is twenty-one together and would have wrapped
-mid-phrase. Nothing was dropped, and the widest line either footer can produce
-is `SEL TOOLS  ¥999999`, which is exactly eighteen. Lines still run through the
-engine's own `TextBox.paginate`, so a font mod's wider glyphs fold here the way
-they do in every other box.
+The menus this mod opens on top of the Bag had a related problem. `ITEM
+OPTIONS`, the TM/HM filter hub and its pickers are plain `ListMenu`s, and
+`ListMenu`'s full-screen branch fills all 160×144 white, draws the title and
+the rows, and paints no frame at all — four options were covering the game with
+an undecorated white page. They are drawn as framed windows over whatever
+opened them instead, sized to their own contents and anchored to the
+bottom-right corner: frame, title row, blank row, then one row per option. Only
+`draw` is replaced, so movement, wrapping, scrolling and `onChoose` stay the
+engine's and the screen is still a real `ListMenu` for Gen1 Modern UI to
+recognise.
+
+The search keyboard was the worst of them. It had no frame either; its three
+header lines sat on a 12px pitch the 8px font does not land on; and its last
+row — `DEL`, `CLR`, `GO` and `EXIT`, which are words rather than single glyphs
+— was laid out on the same 16px pitch as the letters, so the four keys were
+drawn on top of one another and read as `DECLBOEXIT`. It is now one framed
+window with everything on the 8px grid: the letters keep a cell each with the
+cursor in the column to their left, and the action row is measured and centred
+so no two words can share a column whatever the font.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.1.1.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.2.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -165,9 +187,9 @@ arrows always apply.
 Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
 
-Below the list, a text box carries the controls for the open pocket and your
-money — `START SEARCH` / `SEL TOOLS` / `¥1234`, and `START FILTER` /
-`Y/I INFO` / the current sort in TM HM.
+Your money sits in a small window under the item window's bottom-right corner.
+Nothing else is drawn below the list: **SELECT** opens the open pocket's search
+and **START** opens **ITEM OPTIONS**, and neither is spelled out on screen.
 
 ### Opening pocket and fast scrolling
 
@@ -182,12 +204,12 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 
 ### Favorites and pinned items
 
-Press **SELECT** on a highlighted item to open **ITEM OPTIONS**:
+Press **START** on a highlighted item to open **ITEM OPTIONS**:
 
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
-- **MOVE ITEM** — manual reordering; press SELECT on the destination to finish.
+- **MOVE ITEM** — manual reordering; press START on the destination to finish.
 - **CANCEL** — closes ITEM OPTIONS.
 
 Row markers show item status: `F` favorite, `P` pinned, `PF` both.
@@ -201,13 +223,13 @@ keep the order in which they were pinned.
 
 Items sort by pocket and display name whenever the Bag opens, and re-sort when a
 new item type is added or a stack disappears. TMs and HMs stay in numerical
-order with HMs before TMs. Manual SELECT reordering remains available for the
+order with HMs before TMs. Manual MOVE ITEM reordering remains available for the
 current Bag session; reopening the Bag re-applies automatic sorting without
 moving pinned items below unpinned ones.
 
 ### Quick search
 
-Press **START** from any pocket except TM/HM.
+Press **SELECT** from any pocket except TM/HM.
 
 - D-pad moves across the on-screen keyboard; individual keys can be tapped or
   clicked when Gen1 Modern UI is active.
@@ -223,7 +245,7 @@ with that item selected.
 
 ### TM/HM search and move information
 
-The **TM HM** pocket has its own START menu instead of the general search. It
+The **TM HM** pocket has its own SELECT menu instead of the general search. It
 can search by the name of the move in the machine, filter by elemental type,
 filter by **PHYSICAL** / **SPECIAL** / **STATUS** damage class, sort by machine
 number, move name, highest power or lowest power, and combine those filters.
@@ -275,13 +297,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.1.1 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.2.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.1.1.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.2.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees

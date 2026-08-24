@@ -127,51 +127,147 @@ local function drawPocketHeader(list)
   love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Pocket footer.
+-- Money.
 --
--- Same story as the header: ListMenu:draw paints a footer in its plain
--- full-screen branch, below the `return self:drawItemBox()` the Bag takes, so
--- the control hints and the money line were never on screen either.
+-- 1.1.1 put the money line and the control hints in the standard bottom text
+-- box, a full-width white bar under the item window. It read as a second
+-- screen rather than as part of the Bag, and most of what it carried was a
+-- legend for two buttons -- so the hints are gone and the amount is all that
+-- is left.
 --
--- They go in the standard bottom text box, TEXT_BOX at tiles 0,12 - 19,17.
--- Its top row is the row LIST_MENU_BOX ends on, which is how the two stack in
--- vanilla when a message opens under the list. The interior is four 8px rows
--- from y = 104, and text starts at x = 8, leaving the eighteen columns
--- Theme.textBox.maxCols budgets for.
-local FOOTER_BOX = { tx = 0, ty = 12, tw = 20, th = 6 }
-local FOOTER_X = 8
-local FOOTER_TOP_Y = 104
-local FOOTER_ROWS = 4
+-- It cannot go inside the item window: LIST_MENU_BOX has nine interior rows
+-- and the Bag spends every one of them, on the pocket header plus four items
+-- drawn name-over-quantity. So it goes in a small window of its own tucked
+-- under the window's bottom-right corner, sized to the amount so it is never
+-- wider than the digits it holds.
+--
+-- LIST_MENU_BOX ends on tile row 12, and this one starts on 13 rather than
+-- sharing that row the way the full-width text box did. Sharing puts two
+-- frames on one tile: the item window's bottom-right corner is tile 19,12,
+-- and a box that also owns that tile draws its own top-right corner there,
+-- leaving the item window's corner open. Starting a row lower, the two
+-- borders meet without either being redrawn.
+local MONEY_BOX_TY = 13
+local MONEY_BOX_TH = 3
+local MONEY_BOX_RIGHT_TX = 19
+local MONEY_TEXT_Y = 112
 
--- The engine's own wrapper, so a font mod's wider glyphs fold the same way
--- here as they do in every other box.
-local function footerLines(text)
-  local TextBox = require("src.render.TextBox")
-  local lines = {}
-  for _, page in ipairs(TextBox.paginate(text)) do
-    for _, line in ipairs(page) do lines[#lines + 1] = line end
-  end
-  return lines
+local function moneyText(game)
+  local amount = math.floor(tonumber(game and game.save and game.save.money) or 0)
+  return ("¥%d"):format(math.max(0, amount))
 end
 
-local function drawBagFooter(list)
+local function drawBagMoney(list)
   local text = list.footer
   if type(text) ~= "string" or text == "" then return end
-  local lines = footerLines(text)
-  local shown = math.min(#lines, FOOTER_ROWS)
-  if shown == 0 then return end
-
   local Font = require("src.render.Font")
+  -- Whole tiles: a font mod's glyphs may not be exactly 8px wide.
+  local cols = math.ceil(Font.width(text) / 8)
+  local tw = math.max(3, math.min(20, cols + 2))
+  local tx = math.max(0, MONEY_BOX_RIGHT_TX + 1 - tw)
+
   love.graphics.setColor(1, 1, 1, 1)
-  Font.drawBox(FOOTER_BOX.tx, FOOTER_BOX.ty, FOOTER_BOX.tw, FOOTER_BOX.th)
+  Font.drawBox(tx, MONEY_BOX_TY, tw, MONEY_BOX_TH)
   love.graphics.setColor(0, 0, 0, 1)
-  -- Centre the block in the interior: two lines sit on the middle two rows.
-  local y = FOOTER_TOP_Y + math.floor((FOOTER_ROWS - shown) / 2) * 8
-  for i = 1, shown do
-    Font.draw(lines[i], FOOTER_X, y)
+  Font.draw(text, (tx + 1) * 8, MONEY_TEXT_Y)
+  love.graphics.setColor(1, 1, 1, 1)
+end
+
+-- Popup menus.
+--
+-- Every menu this mod opens on top of the Bag -- ITEM OPTIONS, the TM/HM
+-- filters and their pickers -- is a plain ListMenu, and ListMenu's full-screen
+-- branch fills all 160x144 white, draws the title and the rows and paints no
+-- frame at all. Four options were covering the game with an undecorated white
+-- page.
+--
+-- They are drawn as a framed window over whatever opened them instead, which
+-- is how Gen 1 draws its own menus. The engine keeps owning the menu: only
+-- `draw` is replaced, so movement, wrapping, scrolling and onChoose stay the
+-- engine's and the screen is still a real ListMenu for Gen1 Modern UI to
+-- recognise.
+local SCREEN_TILES_W = 20
+local SCREEN_TILES_H = 18
+local POPUP_MAX_ROWS = 9
+local POPUP_MIN_INNER_TILES = 8
+
+-- Frame (2) + the title row + the blank row under it.
+local POPUP_CHROME_TILES = 4
+
+local function popupVisibleRows(list)
+  return math.max(1, math.min(#(list.items or {}), POPUP_MAX_ROWS))
+end
+
+-- Sized to its own contents, anchored to the bottom-right corner: the widest
+-- row decides the width, the number of rows the height, so a four-option menu
+-- is a four-option window.
+local function popupGeometry(list)
+  local Font = require("src.render.Font")
+  local widest = Font.width(tostring(list.title or ""))
+  for _, item in ipairs(list.items or {}) do
+    -- Rows are indented by the cursor column; the title is not.
+    local width = Font.width(tostring(item.label or "")) + 8
+    if width > widest then widest = width end
+  end
+  local inner = math.max(POPUP_MIN_INNER_TILES, math.ceil(widest / 8))
+  local tw = math.min(SCREEN_TILES_W, inner + 2)
+  local visible = popupVisibleRows(list)
+  local th = math.min(SCREEN_TILES_H, visible + POPUP_CHROME_TILES)
+  return {
+    tx = SCREEN_TILES_W - tw,
+    ty = SCREEN_TILES_H - th,
+    tw = tw,
+    th = th,
+    visible = visible,
+    titleWidth = (tw - 2) * 8,
+    labelWidth = (tw - 2) * 8 - 8,
+  }
+end
+
+local function drawPopupMenu(list)
+  local Font = require("src.render.Font")
+  local Theme = require("src.ui.Theme")
+  local items = list.items or {}
+  local geom = popupGeometry(list)
+  -- The engine scrolls against list.rows, so the window it scrolls for has to
+  -- be the window that is drawn.
+  list.rows = geom.visible
+
+  local index = math.max(1, math.min(list.index or 1, math.max(1, #items)))
+  local scroll = math.max(0, math.min(list.scroll or 0, math.max(0, #items - geom.visible)))
+  if index - scroll < 1 then scroll = index - 1 end
+  if index - scroll > geom.visible then scroll = index - geom.visible end
+
+  love.graphics.setColor(1, 1, 1, 1)
+  Font.drawBox(geom.tx, geom.ty, geom.tw, geom.th)
+  love.graphics.setColor(0, 0, 0, 1)
+
+  local x = (geom.tx + 1) * 8
+  local y = (geom.ty + 1) * 8
+  Font.draw(fitLabel(Font, tostring(list.title or ""), geom.titleWidth), x, y)
+  y = y + 16
+  for row = 1, geom.visible do
+    local item = items[scroll + row]
+    if item then
+      if scroll + row == index then Font.drawCode(Theme.cursor, x, y) end
+      Font.draw(fitLabel(Font, tostring(item.label or ""), geom.labelWidth), x + 8, y)
+    end
     y = y + 8
   end
+  if Theme.moreArrow and scroll + geom.visible < #items then
+    Font.drawCode(Theme.moreArrow, (geom.tx + geom.tw - 2) * 8, y - 8)
+  end
   love.graphics.setColor(1, 1, 1, 1)
+end
+
+local function asPopupMenu(list)
+  if type(list) ~= "table" then return list end
+  -- The window covers only its own corner, so whatever opened it has to keep
+  -- drawing underneath.
+  list.isOpaque = false
+  list.rows = popupVisibleRows(list)
+  list.draw = drawPopupMenu
+  return list
 end
 
 local function rememberPocket(state)
@@ -605,17 +701,20 @@ local function refreshPocket(list, preserveId)
   -- Not drawn by the engine for an item-box list (see the pocket header
   -- above), but Gen1 Modern UI and the compatibility contract read it.
   list.title = pocket.label
+  -- START opens the item tools on every pocket; SELECT opens that pocket's
+  -- search, which for TM/HM is the filter hub. The labels are published for
+  -- Gen1 Modern UI, which puts a touch button on each of them; nothing is
+  -- spelled out on the Bag itself any more.
+  state.startActionLabel = "TOOLS"
   if pocket.id == "machines" then
-    local sortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
-    state.startActionLabel = "FILTER"
-    -- One hint per line: the box is eighteen columns, and "START FILTER" and
-    -- "Y/I INFO" together are twenty-one.
-    list.footer = "START FILTER\nY/I INFO\nSORT " .. sortLabel
+    state.selectActionLabel = "FILTER"
+    state.machineSortLabel = (state.machineSort or "NUMBER"):gsub("_", " ")
   else
-    state.startActionLabel = "SEARCH"
-    -- "SEL TOOLS  ¥999999" is exactly eighteen, the widest this can get.
-    list.footer = ("START SEARCH\nSEL TOOLS  ¥%d"):format(list.game.save.money or 0)
+    state.selectActionLabel = "SEARCH"
+    state.machineSortLabel = nil
   end
+  -- The whole footer is now the amount in the corner window.
+  list.footer = moneyText(list.game)
   restoreCursor(list, rows, preserveId)
 
   if state.swapId then
@@ -675,6 +774,78 @@ local SEARCH_GRID = {
   { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
   { "DEL", "CLR", "GO", "EXIT" },
 }
+
+-- The search keyboard.
+--
+-- 1.1.1 drew this as a bare white page. There was no frame; the three header
+-- lines sat on a 12px pitch the 8px font does not land on; and the last row --
+-- DEL, CLR, GO and EXIT, which are words rather than single glyphs -- was laid
+-- out on the same 16px pitch as the letters, so the four keys were drawn on
+-- top of one another and read as "DECLBOEXIT".
+--
+-- The screen is now one framed window with everything on the 8px grid. The
+-- letters keep a cell per key, the cursor in the column to the left of the
+-- glyph, and the action row is measured and centred so no two words can share
+-- a column whatever the font.
+local KEYBOARD_BOX = { tx = 0, ty = 0, tw = SCREEN_TILES_W, th = SCREEN_TILES_H }
+local KEYBOARD_LEFT_X = 8      -- the window's first interior column
+local KEYBOARD_INNER_W = 144   -- eighteen columns of it
+local KEYBOARD_CELL_W = 16     -- cursor column + glyph column
+local KEYBOARD_HEADER_Y = 8
+local KEYBOARD_GRID_TOP = 40
+local KEYBOARD_ROW_H = 16
+local KEYBOARD_ACTION_Y = 104
+local KEYBOARD_HINT_Y = 120
+
+-- Eighteen columns each; both keyboards take the same keys.
+local KEYBOARD_HINTS = {
+  "A TYPE  B DEL/EXIT",
+  "SEL CLR  START GO",
+}
+
+local function drawKeyboardGrid(screen, Font, Theme)
+  local actionRow = #SEARCH_GRID
+  for r = 1, actionRow - 1 do
+    local y = KEYBOARD_GRID_TOP + (r - 1) * KEYBOARD_ROW_H
+    for c, key in ipairs(SEARCH_GRID[r]) do
+      local x = KEYBOARD_LEFT_X + (c - 1) * KEYBOARD_CELL_W
+      if r == screen.row and c == screen.col then Font.drawCode(Theme.cursor, x, y) end
+      Font.draw(key, x + 8, y)
+    end
+  end
+
+  local keys = SEARCH_GRID[actionRow]
+  local run = 0
+  for _, key in ipairs(keys) do run = run + 8 + Font.width(key) end
+  -- Centre the measured run on the 8px column grid the rest of the box uses.
+  local x = KEYBOARD_LEFT_X
+    + math.max(0, math.floor((KEYBOARD_INNER_W - run) / 16)) * 8
+  for c, key in ipairs(keys) do
+    if screen.row == actionRow and c == screen.col then
+      Font.drawCode(Theme.cursor, x, KEYBOARD_ACTION_Y)
+    end
+    Font.draw(key, x + 8, KEYBOARD_ACTION_Y)
+    x = x + 8 + Font.width(key)
+  end
+end
+
+local function drawSearchKeyboard(screen, headerLines)
+  local Font = require("src.render.Font")
+  local Theme = require("src.ui.Theme")
+  love.graphics.setColor(1, 1, 1, 1)
+  Font.drawBox(KEYBOARD_BOX.tx, KEYBOARD_BOX.ty, KEYBOARD_BOX.tw, KEYBOARD_BOX.th)
+  love.graphics.setColor(0, 0, 0, 1)
+  local y = KEYBOARD_HEADER_Y
+  for _, line in ipairs(headerLines) do
+    Font.draw(line, KEYBOARD_LEFT_X, y)
+    y = y + 8
+  end
+  drawKeyboardGrid(screen, Font, Theme)
+  for i, hint in ipairs(KEYBOARD_HINTS) do
+    Font.draw(hint, KEYBOARD_LEFT_X, KEYBOARD_HINT_Y + (i - 1) * 8)
+  end
+  love.graphics.setColor(1, 1, 1, 1)
+end
 
 local QuickSearch = {}
 QuickSearch.__index = QuickSearch
@@ -793,28 +964,23 @@ function QuickSearch:update(dt)
   end
 end
 
-function QuickSearch:draw()
-  local Font = require("src.render.Font")
-  local Theme = require("src.ui.Theme")
-  love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.rectangle("fill", 0, 0, 160, 144)
-  love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(self.title, 8, 2)
-  Font.draw("FIND: " .. (self.query == "" and "ALL" or self.query), 8, 14)
-  Font.draw("MATCHES: " .. tostring(#searchRows(self.game, self.query, self.bagList.modernBag)), 8, 26)
-  for r, keys in ipairs(SEARCH_GRID) do
-    for c, key in ipairs(keys) do
-      local x = 16 + (c - 1) * 16
-      local y = 38 + (r - 1) * 16
-      if r == self.row and c == self.col then
-        Font.drawCode(Theme.cursor, x - 8, y)
-      end
-      Font.draw(key, x, y)
-    end
+-- Recomputed only when the query changes: the count is drawn every frame and
+-- the Bag it counts cannot change while the keyboard is open.
+function QuickSearch:matchCount()
+  if self.matchQuery ~= self.query then
+    self.matchQuery = self.query
+    self.matchTotal = #searchRows(self.game, self.query, self.bagList.modernBag)
   end
-  Font.draw("A TYPE  START/GO", 8, 122)
-  Font.draw("B DEL/EXIT  SEL CLR", 8, 134)
-  love.graphics.setColor(1, 1, 1, 1)
+  return self.matchTotal or 0
+end
+
+function QuickSearch:draw()
+  drawSearchKeyboard(self, {
+    self.title,
+    -- "FIND: " plus the twelve glyphs the query is capped at is eighteen.
+    "FIND: " .. (self.query == "" and "ALL" or self.query),
+    "MATCHES: " .. tostring(self:matchCount()),
+  })
 end
 
 local function openQuickSearch(list)
@@ -987,24 +1153,10 @@ function MachineNameSearch:update(dt)
 end
 
 function MachineNameSearch:draw()
-  local Font = require("src.render.Font")
-  local Theme = require("src.ui.Theme")
-  love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.rectangle("fill", 0, 0, 160, 144)
-  love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(self.title, 8, 2)
-  Font.draw("FIND: " .. (self.query == "" and "ALL" or self.query), 8, 16)
-  for r, keys in ipairs(SEARCH_GRID) do
-    for c, key in ipairs(keys) do
-      local x = 16 + (c - 1) * 16
-      local y = 32 + (r - 1) * 16
-      if r == self.row and c == self.col then Font.drawCode(Theme.cursor, x - 8, y) end
-      Font.draw(key, x, y)
-    end
-  end
-  Font.draw("START/GO APPLY", 8, 122)
-  Font.draw("B DEL/EXIT  SEL CLR", 8, 134)
-  love.graphics.setColor(1, 1, 1, 1)
+  drawSearchKeyboard(self, {
+    self.title,
+    "FIND: " .. (self.query == "" and "ALL" or self.query),
+  })
 end
 
 
@@ -1081,7 +1233,7 @@ local function openMachineSearch(bagList)
   state.swapId = nil
   bagList.hollowIndex = nil
   local hub
-  hub = ListMenu.new(bagList.game, "TM HM SEARCH", {}, {
+  hub = asPopupMenu(ListMenu.new(bagList.game, "TM HM SEARCH", {}, {
     onChoose = function(choice, menu)
       local filters = machineFilters(state)
       if choice.value == "name" then
@@ -1091,13 +1243,13 @@ local function openMachineSearch(bagList)
         end))
       elseif choice.value == "type" then
         local typeMenu
-        typeMenu = ListMenu.new(bagList.game, "MOVE TYPE", machineTypeRows(bagList.game, state), {
+        typeMenu = asPopupMenu(ListMenu.new(bagList.game, "MOVE TYPE", machineTypeRows(bagList.game, state), {
           onChoose = function(row, current)
             current:close()
             filters.type = row.value
             updateMachineHub(hub, bagList)
           end,
-        })
+        }))
         bagList.game.stack:push(typeMenu)
       elseif choice.value == "class" then
         local classRows = {
@@ -1106,13 +1258,13 @@ local function openMachineSearch(bagList)
           { label = "SPECIAL", value = "SPECIAL" },
           { label = "STATUS", value = "STATUS" },
         }
-        bagList.game.stack:push(ListMenu.new(bagList.game, "DAMAGE CLASS", classRows, {
+        bagList.game.stack:push(asPopupMenu(ListMenu.new(bagList.game, "DAMAGE CLASS", classRows, {
           onChoose = function(row, current)
             current:close()
             filters.damageClass = row.value
             updateMachineHub(hub, bagList)
           end,
-        }))
+        })))
       elseif choice.value == "sort" then
         local sortRows = {
           { label = "MACHINE NUMBER", value = "NUMBER" },
@@ -1120,14 +1272,14 @@ local function openMachineSearch(bagList)
           { label = "POWER HIGH TO LOW", value = "POWER_DESC" },
           { label = "POWER LOW TO HIGH", value = "POWER_ASC" },
         }
-        bagList.game.stack:push(ListMenu.new(bagList.game, "SORT TM HM", sortRows, {
+        bagList.game.stack:push(asPopupMenu(ListMenu.new(bagList.game, "SORT TM HM", sortRows, {
           onChoose = function(row, current)
             current:close()
             setMachineSort(state, row.value)
             refreshPocket(bagList, selectedId(bagList))
             updateMachineHub(hub, bagList)
           end,
-        }))
+        })))
       elseif choice.value == "results" then
         local rows = machineFilteredRows(bagList.game, state)
         local resultList
@@ -1148,7 +1300,7 @@ local function openMachineSearch(bagList)
         hub:close()
       end
     end,
-  })
+  }))
   updateMachineHub(hub, bagList)
   bagList.game.stack:push(hub)
 end
@@ -1203,7 +1355,7 @@ local function openItemTools(item, list)
     { label = "MOVE ITEM", value = "move" },
     { label = "CANCEL", value = "cancel" },
   }
-  list.game.stack:push(ListMenu.new(list.game, "ITEM OPTIONS", rows, {
+  list.game.stack:push(asPopupMenu(ListMenu.new(list.game, "ITEM OPTIONS", rows, {
     onChoose = function(choice, menu)
       menu:close()
       if choice.value == "favorite" then
@@ -1223,7 +1375,30 @@ local function openItemTools(item, list)
         reorderWithinBag(item, list)
       end
     end,
-  }))
+  })))
+end
+
+-- START. In swap mode the press lands the item being moved; otherwise it
+-- opens that item's tools.
+local function openBagTools(list)
+  local item = list.items and list.items[list.index or 1]
+  if not item then return end
+  if list.modernBag and list.modernBag.swapId then
+    reorderWithinBag(item, list)
+  else
+    openItemTools(item, list)
+  end
+end
+
+-- SELECT. Each pocket's search: the TM/HM pocket's is its filter hub.
+local function openBagSearch(list)
+  local state = list.modernBag
+  local pocket = state and POCKETS[state.pocket]
+  if pocket and pocket.id == "machines" then
+    openMachineSearch(list)
+  else
+    openQuickSearch(list)
+  end
 end
 
 local function decorateBag(game, opts, list, mod)
@@ -1253,7 +1428,8 @@ local function decorateBag(game, opts, list, mod)
     machineSort = preferences.machineSort,
     machineFilters = { query = "", type = "ANY", damageClass = "ANY" },
     searchAvailable = true,
-    startActionLabel = "SEARCH",
+    startActionLabel = "TOOLS",
+    selectActionLabel = "SEARCH",
   }
   list.pageJump = false
 
@@ -1265,14 +1441,6 @@ local function decorateBag(game, opts, list, mod)
   list.repeatRate = repeatConfig.rate
   list.holdDir = nil
   list.holdFrames = 0
-
-  list.onSelectKey = function(item, currentList)
-    if currentList.modernBag and currentList.modernBag.swapId then
-      reorderWithinBag(item, currentList)
-    else
-      openItemTools(item, currentList)
-    end
-  end
 
   function list:update(dt)
     local state = self.modernBag
@@ -1289,9 +1457,11 @@ local function decorateBag(game, opts, list, mod)
     if pocket and pocket.id == "machines" and input:wasPressed(INFO_ACTION) then
       openMoveInfo(self.game, selectedId(self))
       return
+    elseif input:wasPressed("select") then
+      openBagSearch(self)
+      return
     elseif input:wasPressed("start") then
-      if pocket and pocket.id == "machines" then openMachineSearch(self)
-      else openQuickSearch(self) end
+      openBagTools(self)
       return
     elseif input:wasPressed("left") then
       switchPocket(self, -1)
@@ -1310,7 +1480,7 @@ local function decorateBag(game, opts, list, mod)
     -- build ever draws them itself, leave it alone rather than doubling up.
     if self.itemBox then
       drawPocketHeader(self)
-      drawBagFooter(self)
+      drawBagMoney(self)
     end
   end
 
