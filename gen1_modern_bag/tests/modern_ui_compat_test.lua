@@ -242,8 +242,8 @@ assert(machineSearch.screenId == "ModernBagNicknameSearch",
 assert(type(machineSearch.grid) == "function" and type(machineSearch.glyphs) == "table",
   "the search does not expose naming-keyboard state")
 local machineGrid = machineSearch:grid()
+assert(#machineGrid == 5, "the keyboard grid is not five rows")
 assert(machineGrid[5][3] == "GO", "the action row moved")
-assert(machineGrid[#machineGrid][1] == "SORT", "the sort key is missing")
 machineSearch:close()
 
 assert(mod.exports.ensureModernUiAdapter(), "adapter retry export failed")

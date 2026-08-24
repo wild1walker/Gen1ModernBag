@@ -202,7 +202,7 @@ drew next; that path now takes the same window as every other.
 
 ## Installation
 
-1. Download `gen1_modern_bag_v1.6.0.zip` from the releases page.
+1. Download `gen1_modern_bag_v1.7.0.zip` from the releases page.
 2. Import the ZIP in the Gen1Recomp **MODS** manager.
 3. Enable **Gen1ModernBag**.
 4. Fully restart Gen1Recomp.
@@ -257,9 +257,12 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 
 Press **START** on a highlighted item to open the item tools:
 
-- **SORT** — the first row, and the same picker as the search keyboard's SORT
-  key. It is one saved preference: it orders the TM/HM pocket and the results
-  page, while every other pocket stays in the order you arrange it in.
+- **SORT** — re-sorts the open pocket once and then leaves it alone, so MOVE
+  ITEM adjusts what it produced. It rewrites only the slots that pocket already
+  occupies, so the others keep their own order. A pocket with no machines in it
+  is offered `NAME` and nothing else. Up to 1.6.0 this set a saved preference
+  instead, which showed on the TM/HM pocket and the results page and did
+  nothing visible anywhere else.
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from FAVORITES.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its
   normal category.
@@ -282,7 +285,10 @@ keep the order in which they were pinned.
 
 Items sort by pocket and display name whenever the Bag opens, and re-sort when a
 new item type is added or a stack disappears. TMs and HMs stay in numerical
-order with HMs before TMs. Manual MOVE ITEM carrying remains available for the
+order with HMs before TMs — which is the bag order, so the TM/HM pocket is
+arrangeable by hand like any other. Up to 1.6.0 it was drawn in the saved sort
+instead, which was redrawn over every manual move. Manual MOVE ITEM carrying
+remains available for the
 current Bag session; reopening the Bag re-applies automatic sorting without
 moving pinned items below unpinned ones.
 
@@ -297,11 +303,15 @@ everywhere.
 - **B** deletes the last character, or closes search when the query is empty.
 - **SELECT** clears the query.
 - **START**, the Modern UI **SEARCH** button, or **GO** shows all matches.
-- **SORT** chooses the order the results come back in.
+Ordering the results is the item tools' **SORT**, pressed on the results page
+itself. That page has no order of its own to rewrite — it is rebuilt from the
+query every time — so SORT there sets the saved preference the rebuild reads,
+rather than re-sorting in place the way it does on a real pocket. Up to 1.7.0
+this was a key on the keyboard.
 
 Search covers every pocket and matches both the displayed name and the internal
 item identifier. An empty query lists the whole Bag alphabetically. The
-keyboard shows the query and the sort, and nothing else: it carried a live
+keyboard shows the query and nothing else: it carried a live
 match count up to 1.3.1, which was the results page's job done twice over, and
 the only reason the search re-ran on every keystroke.
 
@@ -313,12 +323,12 @@ instead of the keyboard when you happened to be on the TM/HM pocket; folding
 them into the query retired the hub, its two pickers and its own move-name
 keyboard.
 
-**SORT** stays a choice rather than a term, because it is an ordering: it is a
-key on the keyboard with its current value shown under `FIND`. `NAME` orders
-everything by displayed name; `NUMBER`, `POWER HIGH` and `POWER LOW` group the
-machines first in that order and leave everything else after them by name, a
-POTION having no machine number and no base power. It is the same saved
-preference that orders the TM/HM pocket.
+**SORT** stays a choice rather than a term, because it is an ordering — but it
+lives in the item tools, not on the keyboard. `NAME` orders everything by
+displayed name, and a machine by its move rather than by `TM24`; `NUMBER`,
+`POWER HIGH` and `POWER LOW` group the machines first in that order and leave
+everything else after them by name, a POTION having no machine number and no
+base power.
 
 The matches do not open a page of their own. They are handed back to the Bag,
 which grows a **RESULTS** pocket for them and puts you on it — so they are read
@@ -383,13 +393,13 @@ Requires Lua 5.4.
     cd gen1_modern_bag && lua5.4 tests/modern_ui_compat_test.lua
 
 The tests stub the engine modules they need, so no Gen1Recomp checkout is
-required. Both suites pass on Lua 5.4 for the 1.6.0 tree; behaviour on-device
+required. Both suites pass on Lua 5.4 for the 1.7.0 tree; behaviour on-device
 has not been verified in this repository.
 
 To build a release archive matching the shape the in-game importer expects
 (`gen1_modern_bag/` at the archive root):
 
-    zip -r gen1_modern_bag_v1.6.0.zip gen1_modern_bag -x '*.zip'
+    zip -r gen1_modern_bag_v1.7.0.zip gen1_modern_bag -x '*.zip'
 
 Releases are cut by `.github/workflows/release.yml`, from the Actions tab or by
 pushing a `v*` tag. It runs the checks above, refuses a version that disagrees

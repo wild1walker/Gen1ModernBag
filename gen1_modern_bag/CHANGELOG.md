@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.8.0
+
+- **The search keyboard carries the query and the keys, and nothing else.**
+  The `A TYPE / B DEL-EXIT / SEL CLR / START GO` legend is gone -- every one of
+  those is a key on the grid or the button you would reach for anyway -- and so
+  is the SORT key and the `SORT:` line above the grid.
+- **Ordering is the item tools' SORT on every page, including the results.**
+  The results page has no order of its own to rewrite -- it is rebuilt from the
+  query every time -- so SORT there sets the saved preference the rebuild
+  reads, which is what the keyboard's SORT key used to do. Nothing was lost by
+  taking the key off the keyboard.
+- SORT on the results page now applies however few rows the search came back
+  with. The "nothing to reorder" guard was running first, so a one-row page
+  silently ignored it, even though the preference outlives that search.
+- Respaced the keyboard for what is left: a row above `FIND`, two between
+  `FIND` and the letters, two between the letters and the action row, and two
+  below it.
+- **SORT in the item tools re-sorts the open pocket once and then leaves it
+  alone.** It rewrites the order the pocket is drawn from, and MOVE ITEM
+  adjusts what it produced. In 1.6.0 it set a saved preference, which only
+  showed on the TM/HM pocket and the results page and did nothing visible
+  anywhere else.
+- Only the slots the pocket already occupies are rewritten, in place, so every
+  other pocket keeps its own order.
+- A pocket with no machines in it is offered `NAME` and nothing else: machine
+  number and base power mean nothing to a pocket of potions.
+- **The TM/HM pocket follows the bag order like every other pocket.** It was
+  drawn in the saved sort, which won over every manual move -- so it was the
+  one pocket MOVE ITEM could never arrange, and the one pocket a one-shot
+  re-sort would have been redrawn over. Its default order is unchanged:
+  automatic sorting already files machines HM-first by number.
+- `NAME` sorts a machine by its move rather than by `TM24`.
+
+---
+
 ## 1.6.0
 
 - **MOVE ITEM carries the item now.** Up and Down walk it through the pocket a
