@@ -18,9 +18,9 @@ visible at a glance. Pockets wrap around, so both arrows always apply.
 
 Press **Left/Right** to change pocket. The opening pocket is now configurable in **MODS → Gen1ModernBag → Options**. The default remains **MEDICINE**, and **LAST USED** can be selected if you want the Bag to reopen on the pocket you used most recently. Up/Down, A and B keep their original meanings.
 
-Below the list, a text box carries the controls for the open pocket and your
-money — `START SEARCH` / `SEL TOOLS` / `¥1234`, and `START FILTER` /
-`Y/I INFO` / the current sort in TM HM.
+Your money sits in a small window under the item window's bottom-right corner.
+Nothing else is drawn below the list: **SELECT** opens the open pocket's search
+and **START** opens **ITEM OPTIONS**, and neither is spelled out on screen.
 
 ## Opening pocket and fast scrolling
 
@@ -33,11 +33,11 @@ Holding **Up** or **Down** now repeats list movement automatically instead of re
 
 ## Favorites and pinned items
 
-Press **SELECT** while an item is highlighted to open **ITEM OPTIONS**:
+Press **START** while an item is highlighted to open **ITEM OPTIONS**:
 
 - **ADD FAVORITE / REMOVE FAVORITE** — adds or removes the item from the FAVORITES pocket.
 - **PIN TO TOP / UNPIN ITEM** — fixes the item above every unpinned item in its normal category.
-- **MOVE ITEM** — starts manual item reordering; press SELECT on the destination item to complete the move.
+- **MOVE ITEM** — starts manual item reordering; press START on the destination item to complete the move.
 - **CANCEL** — closes ITEM OPTIONS.
 
 The row markers indicate item status:
@@ -54,11 +54,11 @@ Pinned items are sorted before all unpinned items. Their position is not changed
 
 Items are automatically sorted by pocket and display name whenever the Bag is opened. The order is refreshed when a new item type is added or an item stack disappears completely. TMs and HMs are kept in numerical order, with HMs before TMs.
 
-Pinned items always remain at the top of their category. Manual SELECT reordering remains available through **ITEM OPTIONS → MOVE ITEM** for the current Bag session. Closing and reopening the Bag applies automatic sorting again without moving pinned items below unpinned items.
+Pinned items always remain at the top of their category. Manual MOVE ITEM reordering remains available through **ITEM OPTIONS → MOVE ITEM** for the current Bag session. Closing and reopening the Bag applies automatic sorting again without moving pinned items below unpinned items.
 
 ## Quick search
 
-Press **START** from any pocket except TM/HM to open Quick Search.
+Press **SELECT** from any pocket except TM/HM to open Quick Search.
 
 - Use the D-pad to move across the on-screen keyboard, or tap/click an individual key when Gen1 Modern UI is active.
 - Press **A** to enter a character or activate DEL, CLR, GO and EXIT.
@@ -71,7 +71,7 @@ Search works across every pocket and matches both the displayed item name and it
 
 ## Advanced TM/HM search and move information
 
-The **TM HM** pocket has its own START menu instead of the general item search. It can:
+The **TM HM** pocket has its own SELECT menu instead of the general item search. It can:
 
 - search by the name of the move contained in the machine;
 - filter by elemental move type;
