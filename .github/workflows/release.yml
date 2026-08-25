@@ -13,6 +13,13 @@ name: Release
 # A dispatch or a tag may name one explicitly and is refused if the two
 # disagree. A push whose manifest is already tagged publishes nothing.
 #
+# Notes are taken from gen1_modern_bag/CHANGELOG.md at build time. A release
+# page is not a write-once artefact: correcting a version's changelog section
+# and re-running publishes the corrected notes over the old ones, and
+# notes_only does that for a version already superseded by a later one --
+# without which the only way to correct a published page is to burn a version
+# number on a release that ships no code, which is how 1.9.1 happened.
+#
 # The archive keeps gen1_modern_bag/ as its single top-level folder, which is
 # the second layout the importer accepts (src/mods/LauncherMods.lua locateRoot)
 # and the one this repo's nested source needs. That is why the family's shared
@@ -25,6 +32,11 @@ on:
         description: "Version to release, without the v. Blank takes gen1_modern_bag/manifest.json's."
         required: false
         default: ""
+      notes_only:
+        description: "Republish an already-released version's notes from the changelog. Builds and publishes nothing else."
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
     paths-ignore:
@@ -53,6 +65,7 @@ jobs:
         id: v
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          NOTES_ONLY: ${{ inputs.notes_only }}
         run: |
           set -euo pipefail
           manifest=$(python3 -c "import json; print(json.load(open('gen1_modern_bag/manifest.json'))['version'])")
@@ -60,7 +73,23 @@ jobs:
             refs/tags/v*) version="${GITHUB_REF_NAME#v}" ;;
             *)            version="${INPUT_VERSION:-$manifest}" ;;
           esac
-          if [ "$version" != "$manifest" ]; then
+          notes_only="${NOTES_ONLY:-false}"
+          # A notes-only run rewrites the page of a version that is already
+          # out, which is usually one the manifest has since moved past, so
+          # the agreement check below is the wrong question to ask it.  What
+          # it needs instead is that the tag exists: there is no page to
+          # correct otherwise, and a typo would quietly publish a new one.
+          if [ "$notes_only" = "true" ]; then
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+              echo "::error::notes_only is a dispatch-only mode"
+              exit 1
+            fi
+            if ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::v$version is not released; there are no notes to correct"
+              exit 1
+            fi
+            echo "republishing v$version's notes only"
+          elif [ "$version" != "$manifest" ]; then
             echo "::error::releasing $version, but gen1_modern_bag/manifest.json says $manifest"
             exit 1
           fi
@@ -68,9 +97,11 @@ jobs:
             [0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "::error::$version is not X.Y.Z"; exit 1 ;;
           esac
+          echo "notes_only=$notes_only" >> "$GITHUB_OUTPUT"
           # A push to main that did not bump the manifest is not a release.
           # Without this every such push would try to republish the current tag.
-          if [ "$GITHUB_REF" = "refs/heads/main" ] \
+          if [ "$notes_only" != "true" ] \
+             && [ "$GITHUB_REF" = "refs/heads/main" ] \
              && git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
             echo "gen1_modern_bag/manifest.json is at $version and v$version is"
             echo "already released; nothing to publish."
@@ -80,17 +111,21 @@ jobs:
           echo "release=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "releasing $version"
+          if [ "$notes_only" = "true" ]; then
+            echo "correcting v$version's notes; nothing is being built"
+          else
+            echo "releasing $version"
+          fi
 
       - name: Install Lua
-        if: steps.v.outputs.release == 'true'
+        if: steps.v.outputs.release == 'true' && steps.v.outputs.notes_only != 'true'
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq lua5.4
 
       - name: Check it parses and its tests pass
-        if: steps.v.outputs.release == 'true'
+        if: steps.v.outputs.release == 'true' && steps.v.outputs.notes_only != 'true'
         working-directory: gen1_modern_bag
         run: |
           set -euo pipefail
@@ -98,7 +133,7 @@ jobs:
           for t in tests/*.lua; do lua5.4 "$t"; done
 
       - name: Build the archive
-        if: steps.v.outputs.release == 'true'
+        if: steps.v.outputs.release == 'true' && steps.v.outputs.notes_only != 'true'
         id: zip
         run: |
           set -euo pipefail
@@ -107,7 +142,7 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Check the importer will take it
-        if: steps.v.outputs.release == 'true'
+        if: steps.v.outputs.release == 'true' && steps.v.outputs.notes_only != 'true'
         run: |
           set -euo pipefail
           rm -rf _verify && mkdir _verify
@@ -151,6 +186,14 @@ jobs:
           set -euo pipefail
           tag="${{ steps.v.outputs.tag }}"
 
+          # Correcting a page and nothing else: the tag, the title and the
+          # asset are all already right, and the run built no zip to upload.
+          if [ "${{ steps.v.outputs.notes_only }}" = "true" ]; then
+            gh release edit "$tag" --notes-file RELEASE_NOTES.md
+            echo "republished $tag's notes"
+            exit 0
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
              && ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
@@ -161,10 +204,17 @@ jobs:
           fi
 
           # Re-running a release replaces the asset rather than failing on it,
-          # so a fixed build can go out under the same tag.
+          # so a fixed build can go out under the same tag -- and replaces the
+          # notes with it.  Leaving them alone was what made a published page
+          # uncorrectable: the changelog could be fixed and re-run all day and
+          # the page kept the first draft, so the only way to publish a
+          # correction was to spend a version number on it.  The changelog is
+          # the source of truth here, so a hand-edit of the page is not
+          # something to preserve -- put it in CHANGELOG.md and re-run.
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${{ steps.zip.outputs.name }}" --clobber
-            echo "updated the asset on $tag"
+            gh release edit "$tag" --notes-file RELEASE_NOTES.md
+            echo "updated the asset and the notes on $tag"
           else
             # Anchored to the commit being released. Without --target, gh
             # anchors a release to whatever the default branch is at the time,
