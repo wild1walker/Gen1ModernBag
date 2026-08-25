@@ -13,8 +13,9 @@
 
 - Corrects the 1.9.0 release notes, which described an earlier design of this
   change -- `Z-A` and `MOST FIRST` orders, and a Bag filed once on open -- none
-  of which shipped. The mod itself is unchanged from 1.9.0; the section below
-  is what 1.9.0 actually does.
+  of which shipped. The 1.9.0 section of this changelog is what 1.9.0 actually
+  does. The mod itself is unchanged from 1.9.0: this version carries the
+  corrected notes, the README and a version bump, and no code.
 
 ---
 
