@@ -1,0 +1,41 @@
+-- Sharing metadata read by tooling and the mod manager's detail pane; never
+-- by the loader's merge, so an absent or malformed card cannot break a load.
+return {
+  summary = "Seven pockets, sorted, searchable and never full -- a derivative "
+    .. "of FAFF0x's Modern Bag, with a corrected machine-label width and a "
+    .. "re-presented header, money line and pop-up titles.",
+  author = "Wild",
+  contact = "https://github.com/wild1walker/Gen1ModernBag",
+  tags = { "bag", "inventory", "ui", "quality-of-life" },
+  differences = {
+    changed = {
+      "a long TM/HM label no longer renders past the right edge of the "
+        .. "pocket: one width constant, which is the only functional change "
+        .. "from upstream 1.6.0",
+      "the pocket header names the pocket rather than numbering it, so it "
+        .. "reads MEDICINE instead of MEDICINE 2/7",
+      "the money line and the titles this mod draws over the Bag go through "
+        .. "the same border-label path as every other title in the set, "
+        .. "rather than Menu.lua's own",
+    },
+    added = {},
+    known = {
+      "essentially all of the functionality is upstream's work.  This is an "
+        .. "independent parallel project, not a replacement, successor or "
+        .. "official continuation of Modern Bag, and it is not endorsed by "
+        .. "or affiliated with FAFF0x",
+    },
+  },
+  credits = {
+    { who = "FAFF0x", for_ = "Modern Bag (github.com/FAFF0x/gen1recomp), the "
+      .. "mod this one is derived from at upstream 1.6.0.  Nearly everything "
+      .. "the Bag does is theirs; its MIT notice is carried verbatim in "
+      .. "LICENSE" },
+    { who = "Gen1Recomp", for_ = "the BagMenu and inventory seams both this "
+      .. "mod and its upstream are built on" },
+    { who = "Nintendo / Creatures / GAME FREAK", for_ = "Pokemon Red, Blue "
+      .. "and Yellow.  Unofficial fan mod, distributed free, no affiliation "
+      .. "and no endorsement" },
+  },
+  compat = { engine = ">=0.0.0-0 <2.0.0", modApi = 2, games = { "gen1" } },
+}
