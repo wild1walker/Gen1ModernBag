@@ -44,6 +44,10 @@ on:
       - '**.md'
       # page furniture: docs/ is README artwork, not mod code
       - 'docs/**'
+      # sharing metadata for the manager's detail pane; the loader never
+      # reads it, so editing a credit is not a code change
+      - '**/mod.card'
+      - 'mod.card'
     tags: ['v*']
 
 permissions:
