@@ -7,15 +7,31 @@ name: Release
 # Dispatching tags the commit it runs on. That push carries the default
 # GITHUB_TOKEN, which by design does not start another workflow run, so the
 # tag trigger below cannot double-publish what a dispatch already built.
+#
+# The version comes from gen1_modern_bag/manifest.json, so bumping the manifest
+# on main is how a release is cut -- the same rule the rest of the family uses.
+# A dispatch or a tag may name one explicitly and is refused if the two
+# disagree. A push whose manifest is already tagged publishes nothing.
+#
+# The archive keeps gen1_modern_bag/ as its single top-level folder, which is
+# the second layout the importer accepts (src/mods/LauncherMods.lua locateRoot)
+# and the one this repo's nested source needs. That is why the family's shared
+# manifest-at-the-root template is not used here.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release, without the v. Must match gen1_modern_bag/manifest.json.'
-        required: true
-        default: '1.0.0'
+        description: "Version to release, without the v. Blank takes gen1_modern_bag/manifest.json's."
+        required: false
+        default: ""
   push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
+      # page furniture: docs/ is README artwork, not mod code
+      - 'docs/**'
     tags: ['v*']
 
 permissions:
@@ -35,29 +51,46 @@ jobs:
 
       - name: Work out the version, and refuse to disagree with the manifest
         id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            version="${GITHUB_REF_NAME#v}"
-          else
-            version="${{ inputs.version }}"
-          fi
           manifest=$(python3 -c "import json; print(json.load(open('gen1_modern_bag/manifest.json'))['version'])")
+          case "$GITHUB_REF" in
+            refs/tags/v*) version="${GITHUB_REF_NAME#v}" ;;
+            *)            version="${INPUT_VERSION:-$manifest}" ;;
+          esac
           if [ "$version" != "$manifest" ]; then
             echo "::error::releasing $version, but gen1_modern_bag/manifest.json says $manifest"
             exit 1
           fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::$version is not X.Y.Z"; exit 1 ;;
+          esac
+          # A push to main that did not bump the manifest is not a release.
+          # Without this every such push would try to republish the current tag.
+          if [ "$GITHUB_REF" = "refs/heads/main" ] \
+             && git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "gen1_modern_bag/manifest.json is at $version and v$version is"
+            echo "already released; nothing to publish."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "releasing $version"
 
       - name: Install Lua
+        if: steps.v.outputs.release == 'true'
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq lua5.4
 
       - name: Check it parses and its tests pass
+        if: steps.v.outputs.release == 'true'
         working-directory: gen1_modern_bag
         run: |
           set -euo pipefail
@@ -65,6 +98,7 @@ jobs:
           for t in tests/*.lua; do lua5.4 "$t"; done
 
       - name: Build the archive
+        if: steps.v.outputs.release == 'true'
         id: zip
         run: |
           set -euo pipefail
@@ -73,6 +107,7 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Check the importer will take it
+        if: steps.v.outputs.release == 'true'
         run: |
           set -euo pipefail
           rm -rf _verify && mkdir _verify
@@ -86,6 +121,7 @@ jobs:
           for t in tests/*.lua; do lua5.4 "$t"; done
 
       - name: Take the notes out of the changelog
+        if: steps.v.outputs.release == 'true'
         id: notes
         run: |
           set -euo pipefail
@@ -108,6 +144,7 @@ jobs:
           PY
 
       - name: Publish it
+        if: steps.v.outputs.release == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -138,3 +175,16 @@ jobs:
               --notes-file RELEASE_NOTES.md
             echo "published $tag"
           fi
+
+      - name: Note that nothing was released
+        if: steps.v.outputs.release != 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo "### No release cut"
+            echo
+            echo "\`gen1_modern_bag/manifest.json\` is at a version that is"
+            echo "already tagged, so this push was checked but not published."
+            echo "Bump the manifest, and add its \`CHANGELOG.md\` heading, to"
+            echo "cut a release."
+          } >> "$GITHUB_STEP_SUMMARY"
