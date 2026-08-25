@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.2
+
+- Declares `games: ["gen1"]` in the manifest. The mod replaces `src.ui.BagMenu`
+  and drives `src.inventory.Bag`, which are the Gen 1 modules -- Gen 2 has its
+  own under `src/ui/gen2` that this never touches -- so Red, Blue and Yellow is
+  what it is. Nothing about the Bag itself changes.
+
+---
+
 ## 1.9.1
 
 - Corrects the 1.9.0 release notes, which described an earlier design of this
