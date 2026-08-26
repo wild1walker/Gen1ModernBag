@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.4
+
+- **Hold Scroll Speed defaults to `OFF`.** 1.9.3 moved it from `FAST` to
+  `NORMAL`, which halved the rate but kept the thing that made it feel wrong:
+  a threshold. Any hold-to-scroll setting has one, and a press either crosses
+  it or does not — so the same press is one row or a run of them depending on
+  how long a finger rests, which reads as the list moving by itself rather
+  than as a speed being too high. `OFF` means a press is a row.
+- `NORMAL`, `FAST` and `VERY FAST` are all still there. None of them is what
+  an unconfigured Bag does now.
+- A saved choice is still untouched.
+
+---
+
 ## 1.9.3
 
 - **Hold Scroll Speed defaults to NORMAL rather than FAST.** FAST starts
