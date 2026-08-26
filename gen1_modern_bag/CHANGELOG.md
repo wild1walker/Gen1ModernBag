@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.3
+
+- **Hold Scroll Speed defaults to NORMAL rather than FAST.** FAST starts
+  repeating after 10 frames held and then moves a row every 2 -- thirty rows a
+  second, off a press about a sixth of a second long. A press meant as one
+  step lands a pocketful further down, and because the threshold is what
+  decides it, the same press does one thing or the other depending on how long
+  a finger rests: it reads as the Bag scrolling by itself. NORMAL is
+  Gen1Recomp's own ListMenu cadence -- 16 frames, then one row every 4 -- and
+  FAST is still one row down the option for anyone who wants it.
+- Only a default, so it moves for players who never chose a speed. A saved
+  choice is still theirs and is not touched.
+
+---
+
 ## 1.9.2
 
 - Declares `games: ["gen1"]` in the manifest. The mod replaces `src.ui.BagMenu`

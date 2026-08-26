@@ -584,6 +584,18 @@ local veryFast = BagMenu.new(game, {})
 assert(veryFast.keyRepeat == true and veryFast.repeatDelay == 6 and veryFast.repeatRate == 1,
   "VERY FAST hold-scroll timing is incorrect")
 
+-- The DEFAULT is NORMAL, and NORMAL is Gen1Recomp's own ListMenu cadence.
+-- FAST starts repeating after 10 frames held and then moves a row every 2 --
+-- thirty rows a second, off a press about a sixth of a second long -- so a
+-- press meant as one step lands a pocketful further down.  Both the schema's
+-- default and the code's own fallback are asserted, because a mod whose two
+-- defaults disagree has a default nobody can name.
+assert(optionSchema[2].default == "normal", "Hold Scroll Speed default is not NORMAL")
+optionValues.hold_scroll_speed = nil
+local unset = BagMenu.new(game, {})
+assert(unset.keyRepeat == true and unset.repeatDelay == 16 and unset.repeatRate == 4,
+  "an unset Hold Scroll Speed did not fall back to NORMAL's timing")
+
 -- Restore test defaults for the remaining assertions.
 optionValues.opening_pocket = "medicine"
 optionValues.hold_scroll_speed = "fast"

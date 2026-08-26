@@ -249,7 +249,7 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 - **Opening Pocket** — FAVORITES, MEDICINE, BALLS, TM/HM, BATTLE, KEY ITEMS,
   OTHER, or LAST USED. The default is MEDICINE; LAST USED reopens the Bag on the
   pocket used most recently.
-- **Hold Scroll Speed** — OFF, NORMAL, FAST (default), or VERY FAST. Holding
+- **Hold Scroll Speed** — OFF, NORMAL (default), FAST, or VERY FAST. Holding
   Up/Down repeats list movement instead of requiring one press per item, using
   Gen1Recomp's native ListMenu key-repeat, so remapped inputs keep working.
 
