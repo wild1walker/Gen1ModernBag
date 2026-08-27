@@ -13,9 +13,9 @@
 </p>
 
 Gen1ModernBag divides the Gen1Recomp inventory into seven modern-style pockets,
-files items on first open, and adds Favorites, persistent pinned items, quick
-search, TM/HM move data and unlimited carrying capacity — while leaving
-every item effect to the vanilla Bag menu.
+files items on first open, and adds an icon for every item, Favorites,
+persistent pinned items, quick search, TM/HM move data and unlimited carrying
+capacity — while leaving every item effect to the vanilla Bag menu.
 
 ## Attribution
 
@@ -65,9 +65,12 @@ reserves room for the `P` / `F` / `PF` row markers) to 9, preserving upstream's
 | `TM34 BIDE`         | 9      | correct                      | `TM34 BIDE`      |
 | `TM45 THUNDER WAVE` | 17     | cut to 15, `.` off-screen    | `TM45 THUNDER.`  |
 
-The constants sit at the top of `compactMachineLabel` in
-[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua); lower them if a display
-still clips.
+The budget is measured from the window the label is going into — thirteen
+glyphs in the plain one, twelve in the one with [item icons](#item-icons) in
+it, since the name starts a tile further in there — and `MACHINE_LABEL_TRIM`
+above `compactMachineLabel` in
+[`gen1_modern_bag/main.lua`](gen1_modern_bag/main.lua) takes glyphs off both if
+a display still clips.
 
 The quantity column is not affected. Counts are drawn right-aligned on a second
 line below the name, which is vanilla Gen 1 behaviour; it only appeared to
@@ -239,12 +242,58 @@ Press **Left/Right** to change pocket. Up/Down, A and B keep their original
 meanings.
 
 Your money sits on the item window's bottom border, right-aligned under its
-bottom-right corner. Nothing else is drawn below the list: **SELECT** opens the open pocket's search
+bottom-right corner, read off the save. Nothing is drawn below the list — the
+Bag deliberately carries no list footer, because Gen1Recomp's item-box path
+opens the standard full-width text box under the window for any list that has
+one: **SELECT** opens the open pocket's search
 and **START** opens the item tools, and neither is spelled out on screen.
+
+### Item icons
+
+Every item is drawn with a picture in the column left of its name. A machine
+is a disc in the colour of the type of the move it teaches, read off the move
+rather than a table, so a mod that retunes what TM26 teaches recolours its disc
+with it.
+
+An icon is 16×16, which is two tile columns, and the engine's item window has
+one spare: the cursor takes the column at x = 40 and a name from x = 48 has
+thirteen columns to the right margin for the twelve glyphs a Gen 1 item name
+can be. Putting a picture in that one column would have cost every twelve-glyph
+name its last letter — `SUPER POTION`, `HYPER POTION`, `FULL RESTORE`,
+`THUNDERSTONE`, `HELIX FOSSIL`, `BIKE VOUCHER` and `OAK's PARCEL`, which is
+most of a starting Bag. So the window grows a tile at the left instead: tiles
+3,2–19,12 rather than 4,2–19,12, with the cursor at x = 32, the icon in the two
+columns from x = 40 and the name from x = 56. It is the same pop-up over the
+overworld it always was, two tiles in from the screen edge rather than four,
+and the name column, the quantity column, the more-arrow, the pocket name and
+the money have not moved.
+
+`ITEM ICONS` in the options switches it, and it ships on. Off is the window
+1.9.4 drew, to the pixel — Gen1Recomp draws it and this mod draws nothing — and
+the switch takes effect on the next frame.
+
+An item may name its own icon: `data.items[id].icon`, if it is a string, is a
+path and wins over the shipped set, which is how a sprite pack or a mod that
+adds an item hands its art to the Bag. `mod.exports.itemIcon(game, id)` and
+`mod.exports.drawItemIcon(game, id, x, y)` publish the set in the other
+direction.
+
+The art is **Pokémon Polished Crystal's**, recolored from that project's own
+palette data and scaled to 16 pixels. It is not this project's work — read
+[`gen1_modern_bag/CREDITS.md`](gen1_modern_bag/CREDITS.md) before you
+redistribute it. The TM and HM discs, the LINK CABLE and the GOLD TEETH are
+drawn or recolored by `tools/make_item_icons.py`, which is also where the
+choice of which of their icons stands for which Gen 1 item is written down and
+which rebuilds the whole folder from a checkout of the pack:
+
+```
+python3 tools/make_item_icons.py /path/to/polishedcrystal-item-icons \
+    gen1_modern_bag/assets/items
+```
 
 ### Opening pocket and fast scrolling
 
-Two options are available under **MODS → Gen1ModernBag → Options**:
+Three options are available under **MODS → Gen1ModernBag → Options**:
 
 - **Opening Pocket** — FAVORITES, MEDICINE, BALLS, TM/HM, BATTLE, KEY ITEMS,
   OTHER, or LAST USED. The default is MEDICINE; LAST USED reopens the Bag on the
@@ -252,6 +301,8 @@ Two options are available under **MODS → Gen1ModernBag → Options**:
 - **Hold Scroll Speed** — OFF (default), NORMAL, FAST, or VERY FAST. Holding
   Up/Down repeats list movement instead of requiring one press per item, using
   Gen1Recomp's native ListMenu key-repeat, so remapped inputs keep working.
+- **Item Icons** — ON (default) or OFF. See [Item icons](#item-icons); off is
+  the item window exactly as 1.9.4 drew it.
 
 ### Favorites and pinned items
 

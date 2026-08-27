@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.10.0
+
+- **Every item has a picture, in the column left of its name.** A POTION looks
+  like a potion, the five stones are five different colours, and a machine is
+  a disc in the colour of the type of the move it teaches -- which is the
+  whole of what tells TM24 from TM25 in a pocket of fifty-five four-letter
+  rows. The art is Pokemon Polished Crystal's; see `CREDITS.md`, which is the
+  part of this release that matters most.
+- **The item window is one tile wider to hold them.** An icon is sixteen
+  pixels, which is two tile columns, and the engine's window has one to spare:
+  a picture in that one column would have cost every twelve-glyph name its
+  last letter, and SUPER POTION, HYPER POTION, FULL RESTORE, THUNDERSTONE,
+  HELIX FOSSIL, BIKE VOUCHER and OAK's PARCEL are most of a starting Bag. So
+  the window grows at the left instead -- tiles 3,2-19,12 rather than
+  4,2-19,12 -- and the cursor moves with it. It is still the same pop-up over
+  the overworld, two tiles in from the screen edge rather than four, and the
+  name column, the quantity column, the more-arrow, the pocket name and the
+  money are all exactly where they were. Nothing is truncated that was not
+  truncated before.
+- **`ITEM ICONS`, a new setting, ships on.** Off is the window 1.9.4 drew, to
+  the pixel: the engine draws it, this mod draws nothing, and the setting
+  takes effect on the next frame rather than the next boot.
+- A machine's label is now budgeted from the window it is going into --
+  thirteen glyphs in the plain one, twelve with the icons -- rather than from
+  a pair of constants that only knew about the plain one. Same numbers as
+  1.9.4 wherever the icons are off.
+- An item may name its own icon. `data.items[id].icon`, if it is a string, is
+  a path and it wins, so a sprite pack or a mod that adds an item can hand its
+  own art to the Bag without this mod being told. `mod.exports.itemIcon` and
+  `mod.exports.drawItemIcon` publish the set the other way, for a sibling with
+  somewhere to put one.
+- **Fixed: the money was printed twice.** Gen1Recomp's item-box path opens the
+  standard full-width text box under the window for any list carrying a
+  footer, and this mod parked the amount there while also drawing it on the
+  window's bottom border -- so the Bag grew back the box 1.2.0 removed, with
+  the same number in it. The footer is left empty now and the amount is read
+  off the save.
+
+---
+
 ## 1.9.4
 
 - **Hold Scroll Speed defaults to `OFF`.** 1.9.3 moved it from `FAST` to

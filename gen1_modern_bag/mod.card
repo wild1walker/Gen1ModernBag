@@ -1,9 +1,10 @@
 -- Sharing metadata read by tooling and the mod manager's detail pane; never
 -- by the loader's merge, so an absent or malformed card cannot break a load.
 return {
-  summary = "Seven pockets, sorted, searchable and never full -- a derivative "
-    .. "of FAFF0x's Modern Bag, with a corrected machine-label width and a "
-    .. "re-presented header, money line and pop-up titles.",
+  summary = "Seven pockets, sorted, searchable, never full and with a picture "
+    .. "on every row -- a derivative of FAFF0x's Modern Bag, with item icons, "
+    .. "a corrected machine-label width and a re-presented header, money line "
+    .. "and pop-up titles.",
   author = "Wild",
   contact = "https://github.com/wild1walker/Gen1ModernBag",
   tags = { "bag", "inventory", "ui", "quality-of-life" },
@@ -18,7 +19,12 @@ return {
         .. "the same border-label path as every other title in the set, "
         .. "rather than Menu.lua's own",
     },
-    added = {},
+    added = {
+      "an icon on every item row, and the item window one tile wider at the "
+        .. "left to hold one without shortening a name.  The art is Pokemon "
+        .. "Polished Crystal's -- see CREDITS.md -- except the TM and HM "
+        .. "discs, which are drawn",
+    },
     known = {
       "essentially all of the functionality is upstream's work.  This is an "
         .. "independent parallel project, not a replacement, successor or "
@@ -27,6 +33,10 @@ return {
     },
   },
   credits = {
+    { who = "Pokemon Polished Crystal (Rangi42) and its graphics "
+      .. "contributors", for_ = "the item icons under assets/items/, "
+      .. "recolored from that project's own palette data and scaled to 16 "
+      .. "pixels.  Not this project's art; see CREDITS.md" },
     { who = "FAFF0x", for_ = "Modern Bag (github.com/FAFF0x/gen1recomp), the "
       .. "mod this one is derived from at upstream 1.6.0.  Nearly everything "
       .. "the Bag does is theirs; its MIT notice is carried verbatim in "
