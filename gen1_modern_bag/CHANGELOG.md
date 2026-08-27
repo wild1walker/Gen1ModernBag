@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.1
+
+- **The icons line up with the words now.** A row is sixteen pixels and so is
+  an icon, so 1.10.0 drew each one at its row's own y and filled the row
+  exactly -- and the row holds two lines, the name on its top eight pixels and
+  the count underneath. A Gen 1 glyph inks rows 0 to 6 of its cell, so the
+  name's ink was centred four pixels above the icon's and every item read as
+  floating over its own picture. What a reader pairs is the name and the
+  icon, not the whole cell and the icon, so the icon is raised four pixels
+  onto the name. Icons are still sixteen apart, the column shifts as a whole,
+  and the top one lands four clear of the window's interior.
+
+---
+
 ## 1.10.0
 
 - **Every item has a picture, in the column left of its name.** A POTION looks
