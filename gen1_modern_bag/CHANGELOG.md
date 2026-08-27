@@ -7,7 +7,9 @@
   a disc in the colour of the type of the move it teaches -- which is the
   whole of what tells TM24 from TM25 in a pocket of fifty-five four-letter
   rows. The art is Pokemon Polished Crystal's; see `CREDITS.md`, which is the
-  part of this release that matters most.
+  part of this release that matters most. The SURFBOARD is the one
+  placeholder -- nothing anywhere has ever drawn Gen 1's, so it is drawn here
+  in the set's own idiom.
 - **The item window is one tile wider to hold them.** An icon is sixteen
   pixels, which is two tile columns, and the engine's window has one to spare:
   a picture in that one column would have cost every twelve-glyph name its
