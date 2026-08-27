@@ -20,10 +20,11 @@ end
 -- the Left arrow is the cursor glyph mirrored about its own cell, and a
 -- no-op translate/scale would report it wherever it was asked to draw
 -- instead of where it lands.
-local painted = { text = {}, codes = {}, boxes = {}, clears = {}, images = {} }
+local painted = { text = {}, codes = {}, boxes = {}, clears = {}, images = {},
+                  rects = {} }
 local function resetPaint()
   painted.text, painted.codes, painted.boxes, painted.clears = {}, {}, {}, {}
-  painted.images = {}
+  painted.images, painted.rects = {}, {}
 end
 
 -- A label on a border row is only legible because the line is knocked out
@@ -59,8 +60,16 @@ function love.graphics.setColor(r, g, b, a) drawColor = { r, g, b, a } end
 local function drawColorIsWhite()
   return drawColor[1] == 1 and drawColor[2] == 1 and drawColor[3] == 1
 end
+-- Both kinds of rectangle land here, so the colour is recorded with them: a
+-- knock-out under a border label is white, and the rule between the icon and
+-- the name columns is black. Reading one as the other would have the money's
+-- clearance assertions pass on a line that never knocked anything out.
 function love.graphics.rectangle(_, x, y, w, h)
-  painted.clears[#painted.clears + 1] = { x = x, y = y, w = w, h = h }
+  painted.rects[#painted.rects + 1] =
+    { x = x, y = y, w = w, h = h, white = drawColorIsWhite() }
+  if drawColorIsWhite() then
+    painted.clears[#painted.clears + 1] = { x = x, y = y, w = w, h = h }
+  end
 end
 
 -- The screen column an 8px cell drawn at local `x` covers; a mirrored cell
@@ -1679,9 +1688,10 @@ game.data.items.ESCAPE_ROPE.icon = nil
 -- ------- the window the icons are drawn in
 
 -- The engine's window is tiles 4,2-19,12 with the cursor at x = 40 and the
--- name at x = 48. This one is a tile wider at the left -- 3,2-19,12 -- with
--- the cursor at 32, the icon in the two columns from 40, and the name from 56,
--- which is the twelve glyphs a Gen 1 item name can be, unclipped.
+-- name at x = 48. This one is two tiles wider at the left -- 2,2-19,12 --
+-- with the cursor at 24, the icon in the two columns from 32, the column rule
+-- at 51, and the name from 56, which is the twelve glyphs a Gen 1 item name
+-- can be, unclipped.
 local ITEM_ROW_TOP_Y = 32
 local ITEM_ROW_H = 16
 -- The icon is centred on the NAME rather than on the row: the row holds two
@@ -1696,7 +1706,7 @@ iconBag:draw()
 assert(#painted.boxes == 1,
   "the Bag with icons drew " .. #painted.boxes .. " windows, not one")
 local window = painted.boxes[1]
-assert(window.tx == 3 and window.ty == 2 and window.tw == 17 and window.th == 11,
+assert(window.tx == 2 and window.ty == 2 and window.tw == 18 and window.th == 11,
   ("the icon window is %d,%d %dx%d"):format(window.tx, window.ty,
                                             window.tw, window.th))
 -- Its right-hand corner is the engine's own, so the quantity column, the
@@ -1711,7 +1721,7 @@ for _, call in ipairs(painted.text) do
   end
 end
 for _, icon in ipairs(painted.images) do
-  assert(icon.x == 40, "an icon was drawn at x = " .. icon.x .. ", not 40")
+  assert(icon.x == 32, "an icon was drawn at x = " .. icon.x .. ", not 32")
   assert((icon.y - ITEM_ROW_TOP_Y - ITEM_ICON_DY) % ITEM_ROW_H == 0,
     "an icon was drawn off a row: y = " .. icon.y)
   -- and on a row that actually has a name on it, four pixels below
@@ -1749,8 +1759,42 @@ for _, call in ipairs(painted.codes) do
   if call.y >= ITEM_ROW_TOP_Y then cursors[#cursors + 1] = call end
 end
 assert(#cursors > 0, "the icon window drew no cursor")
-assert(cursors[1].x == 32,
-  "the cursor is at x = " .. cursors[1].x .. ", not 32")
+assert(cursors[1].x == 24,
+  "the cursor is at x = " .. cursors[1].x .. ", not 24")
+
+-- ------- the rule between the icon column and the name column
+
+-- One pixel wide, a row tall, down the middle of the tile between the icon
+-- and the name: 32 + 16 leaves the icon at 47, the name starts at 56, and 51
+-- is three pixels clear of one and four of the other.
+local RULE_X, ICON_RIGHT, NAME_X = 51, 32 + 16, 56
+local rules = {}
+for _, r in ipairs(painted.rects) do
+  if r.w == 1 and r.x == RULE_X then
+    assert(not r.white, "the column rule was drawn in white")
+    rules[#rules + 1] = r
+  end
+end
+assert(#rules > 0, "no column rule was drawn between the icons and the names")
+assert(RULE_X >= ICON_RIGHT and RULE_X < NAME_X,
+  "the rule is not between the two columns")
+for _, r in ipairs(rules) do
+  assert(r.h == ITEM_ROW_H,
+    "a rule is " .. r.h .. " tall, not a whole row -- rows would not join up")
+  assert((r.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0,
+    "a rule was drawn off a row: y = " .. r.y)
+end
+-- Every drawn row gets one, CANCEL included: it divides two columns rather
+-- than decorating an item.
+local drawnRows = 0
+for _, call in ipairs(painted.text) do
+  if (call.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0 and call.y >= ITEM_ROW_TOP_Y
+      and call.x == NAME_X then
+    drawnRows = drawnRows + 1
+  end
+end
+assert(#rules == drawnRows,
+  ("%d rules for %d rows"):format(#rules, drawnRows))
 
 -- The money is still on the bottom border and there is still nothing under
 -- the window: the item-box path opens the standard full-width text box for
@@ -1769,6 +1813,9 @@ iconBag:draw()
 assert(#painted.boxes == 0,
   "ITEM ICONS off still drew a window of this mod's own")
 assert(#painted.images == 0, "ITEM ICONS off still drew icons")
+for _, r in ipairs(painted.rects) do
+  assert(not (r.w == 1 and r.x == RULE_X), "ITEM ICONS off still drew the rule")
+end
 local offCursor
 for _, call in ipairs(painted.codes) do
   if call.y >= ITEM_ROW_TOP_Y then offCursor = offCursor or call end
