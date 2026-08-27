@@ -1684,6 +1684,10 @@ game.data.items.ESCAPE_ROPE.icon = nil
 -- which is the twelve glyphs a Gen 1 item name can be, unclipped.
 local ITEM_ROW_TOP_Y = 32
 local ITEM_ROW_H = 16
+-- The icon is centred on the NAME rather than on the row: the row holds two
+-- lines, the name on its top eight pixels, so an icon filling all sixteen has
+-- its centre four pixels below the word's.
+local ITEM_ICON_DY = -4
 
 optionValues.item_icons = true
 resetPaint()
@@ -1700,11 +1704,27 @@ assert(window.tx == 3 and window.ty == 2 and window.tw == 17 and window.th == 11
 assert((window.tx + window.tw) == 20, "the window's right edge moved")
 
 assert(#painted.images > 0, "no icons were drawn")
+local rowNames = {}
+for _, call in ipairs(painted.text) do
+  if (call.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0 and call.y >= ITEM_ROW_TOP_Y then
+    rowNames[call.y] = true
+  end
+end
 for _, icon in ipairs(painted.images) do
   assert(icon.x == 40, "an icon was drawn at x = " .. icon.x .. ", not 40")
-  assert((icon.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0,
+  assert((icon.y - ITEM_ROW_TOP_Y - ITEM_ICON_DY) % ITEM_ROW_H == 0,
     "an icon was drawn off a row: y = " .. icon.y)
+  -- and on a row that actually has a name on it, four pixels below
+  assert(rowNames[icon.y - ITEM_ICON_DY],
+    "an icon was drawn beside no name: y = " .. icon.y)
 end
+-- It has to clear the window's own interior, which starts under the top
+-- border at y = 24.
+local topIcon = math.huge
+for _, icon in ipairs(painted.images) do
+  topIcon = math.min(topIcon, icon.y)
+end
+assert(topIcon >= 24, "the top icon overlaps the window's border: y = " .. topIcon)
 
 local names = {}
 for _, call in ipairs(painted.text) do
