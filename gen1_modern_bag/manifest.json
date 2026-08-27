@@ -1,7 +1,7 @@
 {
   "id": "gen1_modern_bag",
   "name": "Gen1ModernBag",
-  "version": "1.9.4",
+  "version": "1.10.0",
   "api": 2,
   "games": [
     "gen1"

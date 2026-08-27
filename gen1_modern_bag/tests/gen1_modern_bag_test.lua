@@ -20,9 +20,10 @@ end
 -- the Left arrow is the cursor glyph mirrored about its own cell, and a
 -- no-op translate/scale would report it wherever it was asked to draw
 -- instead of where it lands.
-local painted = { text = {}, codes = {}, boxes = {}, clears = {} }
+local painted = { text = {}, codes = {}, boxes = {}, clears = {}, images = {} }
 local function resetPaint()
   painted.text, painted.codes, painted.boxes, painted.clears = {}, {}, {}, {}
+  painted.images = {}
 end
 
 -- A label on a border row is only legible because the line is knocked out
@@ -68,6 +69,30 @@ local function screenCell(x)
   local origin = transform.tx + transform.sx * x
   if transform.sx < 0 then return origin - 8 end
   return origin
+end
+
+-- Item icons are real files under assets/items/, so the stub opens them
+-- rather than pretending: a mapping that names an icon this mod does not ship
+-- is exactly the mistake worth catching, and it can only be caught against the
+-- folder itself.
+function love.graphics.newImage(path)
+  local handle = io.open(path, "rb")
+  if not handle then error("no image at " .. tostring(path), 0) end
+  handle:close()
+  return {
+    path = path,
+    setFilter = function() end,
+    getDimensions = function() return 16, 16 end,
+  }
+end
+function love.graphics.draw(image, x, y)
+  painted.images[#painted.images + 1] =
+    { path = image and image.path, x = screenCell(x), y = y }
+end
+
+-- The engine's own; nothing here is localized, so it hands text back.
+package.preload["src.core.Strings"] = function()
+  return setmetatable({}, { __call = function(_, text) return text end })
 end
 
 package.preload["src.render.Font"] = function()
@@ -288,9 +313,11 @@ assert(chunk, err)
 chunk()(mod)
 assert(type(ready) == "function", "game.ready hook missing")
 ready({ game = game })
-assert(type(optionSchema) == "table" and #optionSchema == 2, "Gen1ModernBag options were not defined")
+assert(type(optionSchema) == "table" and #optionSchema == 3, "Gen1ModernBag options were not defined")
 assert(optionSchema[1].key == "opening_pocket", "opening pocket option missing")
 assert(optionSchema[2].key == "hold_scroll_speed", "hold scroll option missing")
+assert(optionSchema[3].key == "item_icons", "item icons option missing")
+assert(optionSchema[3].default == true, "item icons ships on")
 
 -- The extra shortcuts preserve the engine's original keyboard/gamepad handlers.
 input:keypressed("i")
@@ -1586,3 +1613,147 @@ end
 -- descending check above is not satisfied by alphabetical order by accident.
 
 print("gen1_modern_bag_move_test: ok")
+
+-- ------------------------------------------------------------ item icons
+--
+-- Everything above ran with no assets in reach -- `mod` had no `read`, so the
+-- Bag drew the engine's own window and the four hundred assertions about
+-- where the pocket name, the money and the rows land are assertions about
+-- that window, unchanged. This section installs the mod a second time with
+-- the assets where they really are and checks the other layout.
+
+mod.path = "."
+mod.read = function(_, name)
+  local handle = io.open(name, "rb")
+  if not handle then return nil, name .. " is missing" end
+  local body = handle:read("*a")
+  handle:close()
+  return body
+end
+
+chunk()(mod)
+ready({ game = game })
+
+local iconBag = BagMenu.new(game, {})
+assert(type(iconBag.modernBag) == "table", "the reinstall decorated no Bag")
+local icons = iconBag.modernBag.icons
+assert(type(icons) == "table", "the Bag did not load its icons")
+
+-- ------- which file an item resolves to
+
+local potion = icons.of(game, "POTION")
+assert(potion and potion.path == "./assets/items/potion.png",
+  "POTION did not resolve to its own icon: " .. tostring(potion and potion.path))
+
+-- A machine takes the disc of the type of the move it teaches, off the move
+-- and not off a table: TM35 is FLAMETHROWER is FIRE.
+local tm35 = icons.of(game, "TM_FLAMETHROWER")
+assert(tm35 and tm35.path == "./assets/items/tm_fire.png",
+  "TM35 did not take the FIRE disc: " .. tostring(tm35 and tm35.path))
+local hm03 = icons.of(game, "HM_SURF")
+assert(hm03 and hm03.path == "./assets/items/hm_water.png",
+  "HM03 did not take the WATER disc: " .. tostring(hm03 and hm03.path))
+-- TM01 is MEGA PUNCH is NORMAL, and an HM is never a TM.
+local tm01 = icons.of(game, "TM_MEGA_PUNCH")
+assert(tm01 and tm01.path == "./assets/items/tm_normal.png",
+  "TM01 did not take the NORMAL disc: " .. tostring(tm01 and tm01.path))
+
+-- An item with no icon is a blank column, not an error.
+assert(icons.of(game, "NOT_AN_ITEM") == nil, "a made-up id resolved to an icon")
+assert(icons.of(game, nil) == nil, "a nil id resolved to an icon")
+
+-- An item that names its own wins, which is how a sprite pack or a mod that
+-- adds an item hands its art to every screen in the suite.
+game.data.items.ESCAPE_ROPE.icon = "./assets/items/link_cable.png"
+local own = icons.of(game, "ESCAPE_ROPE")
+assert(own and own.path == "./assets/items/link_cable.png",
+  "an item's own icon did not win: " .. tostring(own and own.path))
+game.data.items.ESCAPE_ROPE.icon = nil
+-- and a path that is not there falls back rather than drawing nothing
+game.data.items.ESCAPE_ROPE.icon = "./assets/items/nothing_here.png"
+local fellBack = icons.of(game, "ESCAPE_ROPE")
+assert(fellBack and fellBack.path == "./assets/items/escape_rope.png",
+  "a missing override did not fall back: " .. tostring(fellBack and fellBack.path))
+game.data.items.ESCAPE_ROPE.icon = nil
+
+-- ------- the window the icons are drawn in
+
+-- The engine's window is tiles 4,2-19,12 with the cursor at x = 40 and the
+-- name at x = 48. This one is a tile wider at the left -- 3,2-19,12 -- with
+-- the cursor at 32, the icon in the two columns from 40, and the name from 56,
+-- which is the twelve glyphs a Gen 1 item name can be, unclipped.
+local ITEM_ROW_TOP_Y = 32
+local ITEM_ROW_H = 16
+
+optionValues.item_icons = true
+resetPaint()
+iconBag:draw()
+
+assert(#painted.boxes == 1,
+  "the Bag with icons drew " .. #painted.boxes .. " windows, not one")
+local window = painted.boxes[1]
+assert(window.tx == 3 and window.ty == 2 and window.tw == 17 and window.th == 11,
+  ("the icon window is %d,%d %dx%d"):format(window.tx, window.ty,
+                                            window.tw, window.th))
+-- Its right-hand corner is the engine's own, so the quantity column, the
+-- more-arrow and the money have not moved.
+assert((window.tx + window.tw) == 20, "the window's right edge moved")
+
+assert(#painted.images > 0, "no icons were drawn")
+for _, icon in ipairs(painted.images) do
+  assert(icon.x == 40, "an icon was drawn at x = " .. icon.x .. ", not 40")
+  assert((icon.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0,
+    "an icon was drawn off a row: y = " .. icon.y)
+end
+
+local names = {}
+for _, call in ipairs(painted.text) do
+  if (call.y - ITEM_ROW_TOP_Y) % ITEM_ROW_H == 0 and call.y >= ITEM_ROW_TOP_Y
+      and call.y < ITEM_ROW_TOP_Y + 4 * ITEM_ROW_H then
+    names[#names + 1] = call
+  end
+end
+assert(#names > 0, "no item names were drawn")
+for _, call in ipairs(names) do
+  assert(call.x == 56,
+    ("%q was drawn at x = %d, not 56"):format(call.text, call.x))
+  -- Twelve glyphs from 56 ends at 152, which is the frame's own column, so
+  -- nothing may be wider than that.
+  local drawn = utf8.len(call.text) or #call.text
+  assert(drawn <= 12,
+    ("%q is %d glyphs, past the window's right margin"):format(call.text, drawn))
+end
+
+local cursors = {}
+for _, call in ipairs(painted.codes) do
+  if call.y >= ITEM_ROW_TOP_Y then cursors[#cursors + 1] = call end
+end
+assert(#cursors > 0, "the icon window drew no cursor")
+assert(cursors[1].x == 32,
+  "the cursor is at x = " .. cursors[1].x .. ", not 32")
+
+-- The money is still on the bottom border and there is still nothing under
+-- the window: the item-box path opens the standard full-width text box for
+-- any list carrying a footer, so the Bag carries none and draws the amount
+-- itself.
+for _, box in ipairs(painted.boxes) do
+  assert(box.ty ~= 12, "a text box was opened under the item window")
+end
+assert(iconBag.footer == nil, "the Bag parked something in its footer again")
+
+-- ------- and the switch puts the engine's own window straight back
+
+optionValues.item_icons = false
+resetPaint()
+iconBag:draw()
+assert(#painted.boxes == 0,
+  "ITEM ICONS off still drew a window of this mod's own")
+assert(#painted.images == 0, "ITEM ICONS off still drew icons")
+local offCursor
+for _, call in ipairs(painted.codes) do
+  if call.y >= ITEM_ROW_TOP_Y then offCursor = offCursor or call end
+end
+assert(offCursor == nil, "ITEM ICONS off drew the rows itself")
+optionValues.item_icons = true
+
+print("gen1_modern_bag_icons_test: ok")
