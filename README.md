@@ -261,12 +261,27 @@ thirteen columns to the right margin for the twelve glyphs a Gen 1 item name
 can be. Putting a picture in that one column would have cost every twelve-glyph
 name its last letter — `SUPER POTION`, `HYPER POTION`, `FULL RESTORE`,
 `THUNDERSTONE`, `HELIX FOSSIL`, `BIKE VOUCHER` and `OAK's PARCEL`, which is
-most of a starting Bag. So the window grows a tile at the left instead: tiles
-3,2–19,12 rather than 4,2–19,12, with the cursor at x = 32, the icon in the two
-columns from x = 40 and the name from x = 56. It is the same pop-up over the
-overworld it always was, two tiles in from the screen edge rather than four,
-and the name column, the quantity column, the more-arrow, the pocket name and
-the money have not moved.
+most of a starting Bag. So the window grows two tiles at the left instead:
+tiles 2,2–19,12 rather than 4,2–19,12, with the cursor at x = 24, the icon
+in the two columns from x = 32, a one-pixel black rule at x = 51, and the name
+from x = 56. The first of those tiles buys the icon its column; the second
+buys the gap between the icon and the word, and the rule down the middle of
+that gap — without which a picture sits flush against the first letter of the
+name and reads as part of it. It is the same pop-up over the overworld it
+always was, two tiles in from the screen edge rather than four, and the name
+column, the quantity column, the more-arrow, the pocket name and the money
+have not moved.
+
+The icon is centred on the *name* rather than on the row. A row is sixteen
+pixels and so is an icon, but the row holds two lines — the name on its top
+eight pixels, the count underneath — and a Gen 1 glyph inks rows 0 to 6 of its
+cell, so an icon filling the row has its centre four pixels below the word's.
+It is raised four pixels to meet it.
+
+The rule is drawn a row at a time, the full height of a row, so consecutive
+rows join into one continuous line and the line stops where the list does. It
+goes on every row including `CANCEL`: it divides two columns rather than
+decorating an item, and a rule with gaps in it reads as damage.
 
 `ITEM ICONS` in the options switches it, and it ships on. Off is the window
 1.9.4 drew, to the pixel — Gen1Recomp draws it and this mod draws nothing — and
