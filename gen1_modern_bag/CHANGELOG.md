@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.1
+
+- **The settings are in the game's voice.** `Opening Pocket`, `Hold Scroll
+  Speed` and `Item Icons` were the only rows in the whole suite written in
+  Title Case, and their values -- `Favorites`, `Very Fast` -- with them. Every
+  other mod's rows are capitals, and so is this mod's own pocket table twenty
+  lines above the settings, so the Bag's three rows read as another mod's
+  options sitting in the middle of the list.
+
+  They are `OPENING POCKET`, `HOLD SCROLL` and `ITEM ICONS` now, with their
+  values to match, and the pocket names are the pocket names from `POCKETS` to
+  the character -- so the row names the tab it selects rather than a near-miss
+  of it (`TM / HM` was the tab called `TM/HM`).
+
+  Display text only. Every stored value is untouched, so nobody's setting
+  moves.
+
 ## 1.11.0
 
 - **A rule between the icons and the names, and room either side of it.** An
