@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.12.0
+
+Gen1WildUI carried this as an overlay while it was ahead of a release here; it
+shipped in the bundle's 1.22.0. Same code, in the mod that owns it.
+
+- **An item icon sits on paper of its own shape, not on a white square.** All
+  106 are baked by growing the line work by a pixel and flooding what the
+  outside cannot reach, so an icon keeps its own outline against any page
+  instead of carrying a white box with it. On a dark page that box was the
+  whole problem; a POKé BALL came out as a red blob on white.
+- Dropped an unused `HEADER_Y` local.
+
+`tests/itemicons_test.lua` comes across with the code — 30 checks over the
+bake, and it needs no engine.
+
 ## 1.11.1
 
 - **The settings are in the game's voice.** `Opening Pocket`, `Hold Scroll

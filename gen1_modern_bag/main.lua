@@ -141,7 +141,6 @@ local LAYOUTS = {
 -- centres within half a pixel of each other. Icons stay sixteen apart, so the
 -- column shifts as a whole and no two of them come any closer together; the
 -- top one lands on y = 28, four clear of the window's own interior.
-local HEADER_Y = LAYOUTS.plain.ty * 8
 
 -- Which of the two a Bag is drawing in. The icons are a setting and the
 -- setting is live, so this is asked every frame rather than fixed when the
