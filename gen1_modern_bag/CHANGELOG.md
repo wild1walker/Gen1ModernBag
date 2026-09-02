@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.13.1
+
+- **An item icon only lets go of the part of itself a pop-up is standing on.**
+  1.13.0 dropped an icon's matte and its true-colour mark for the whole 16x16
+  cell the moment a box touched any of it — and the boxes this Bag opens are
+  anchored to the right edge at whatever width their longest row needs, so one
+  that reaches into the icon column usually stops part-way across it. The strip
+  of icon still showing beside the box had no mark on it any more, so it went
+  through the palette pass like the page: every item on the list turning
+  greyscale as soon as `START` opened the item tools.
+
+  The cell was never the unit. What re-blits itself over the box is the part of
+  the cell UNDER the box, so that is the only part that has to let go; the slab
+  still on the page keeps its matte, its mark and its colours, and is drawn
+  through a quad so it stops exactly where the box starts. A cell the box
+  covers outright is not drawn at all now, rather than drawn plain and relied
+  on to be painted over.
+
+## 1.13.0
+
+- **An item icon lets go of the pop-up standing on it.** A marked rectangle
+  re-blits RAW once the palette pass composes — after everything drawn over it
+  in the meantime — so an icon under an open menu came back on top of that
+  menu, punching through the box with its own dark cell around it. Draw order
+  cannot reach it, because the re-blit happens after all of it, so the mark
+  goes and the matte goes with it.
+
 ## 1.12.0
 
 Gen1WildUI carried this as an overlay while it was ahead of a release here; it
