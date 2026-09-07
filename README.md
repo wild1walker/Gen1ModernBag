@@ -442,6 +442,18 @@ items are still used, consumed, taught, thrown and validated by Gen1Recomp's
 original menu. Pockets, Favorites, pins, sorting and search are also available
 when the Bag is opened during battle.
 
+## On Gold, Silver and Crystal
+
+The bag runs on the Gen 2 carts too, and it does less there on purpose. Gold's
+PACK already has pockets, a cursor that remembers where it was, and a layout
+worth keeping — the two problems this mod was written for on Red simply are not
+there. So nothing replaces it.
+
+What lands instead is what the cart's PACK does not have: the item icons, the
+descriptions, and search. One row governs the lot — **`PACK EXTRAS`** — and it
+is live, so turning it off gives the cart's own PACK back with nothing to
+relaunch.
+
 ## Compatibility
 
 Custom balls and machines are categorized from their registered item fields.

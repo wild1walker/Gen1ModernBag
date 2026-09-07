@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.0
+
+- **Runs on Gold, Silver and Crystal**, and does less there on purpose. Gold's
+  PACK already has pockets, a remembered cursor and a layout worth keeping, so
+  nothing replaces it. What lands is what the cart's PACK does not have: item
+  icons, descriptions and search.
+
+  One row governs it — **`PACK EXTRAS`** — rather than the three the Gen 1 side
+  offers, because a row that governs nothing is worse than a missing one. It is
+  live, so off gives the cart's own PACK back with nothing to relaunch.
+
+
 ## 1.13.1
 
 - **An item icon only lets go of the part of itself a pop-up is standing on.**
